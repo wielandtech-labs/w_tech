@@ -98,7 +98,7 @@ The homelab Flux Image Automation watches the `dev-*` tags for the shared `websi
 
 1. Clone repository:
 ```bash
-git clone https://github.com/wielandtech/w_tech.git
+git clone https://github.com/wielandtech-labs/w_tech.git
 cd wielandtech
 ```
 
