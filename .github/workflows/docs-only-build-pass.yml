@@ -1,0 +1,25 @@
+# Companion to docker-build.yml for the required "build" branch-protection
+# check. docker-build.yml path-ignores docs ("**.md", "docs/**"), so a
+# docs-only PR would never report the required check and could never merge.
+# This workflow triggers on exactly the inverse paths and reports a job with
+# the SAME name ("build") that passes immediately.
+#
+# Keep the paths here in sync with docker-build.yml's paths-ignore.
+name: Build (docs-only pass)
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "**.md"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docs-only change
+        run: echo "Docs-only change — image build not required; reporting the required 'build' check as passed."
