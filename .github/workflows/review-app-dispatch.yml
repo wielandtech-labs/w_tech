@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   cleanup:
-    runs-on: homelab
+    runs-on: homelab-dind
     steps:
       - name: Dispatch review app cleanup
         env:
@@ -45,5 +45,5 @@ jobs:
                 -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer ${HOMELAB_REVIEW_APP_TOKEN}" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/repos/wielandtech/w_homelab/dispatches \
+                https://api.github.com/repos/wielandtech-labs/w_homelab/dispatches \
                 --data-binary @-
