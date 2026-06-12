@@ -4,6 +4,13 @@ Custom middleware for security and access control.
 from django.http import HttpResponseForbidden
 from django.conf import settings
 
+# Hosts allowed to reach the Django admin (LAN-only access paths).
+INTERNAL_ADMIN_HOSTS = [
+    'wielandtech.k8s.local',
+    '127.0.0.1',
+    'localhost',
+]
+
 
 class AllowMetricsEndpointMiddleware:
     """
@@ -33,12 +40,7 @@ class RestrictAdminMiddleware:
     """
     def __init__(self, get_response):
         self.get_response = get_response
-        # Define allowed hosts for admin access
-        self.allowed_admin_hosts = [
-            'wielandtech.k8s.local',
-            '127.0.0.1',
-            'localhost',
-        ]
+        self.allowed_admin_hosts = INTERNAL_ADMIN_HOSTS
 
     def __call__(self, request):
         # Check if accessing admin URLs
@@ -53,6 +55,30 @@ class RestrictAdminMiddleware:
                 )
         
         response = self.get_response(request)
+        return response
+
+
+class InternalAdminCookieMiddleware:
+    """
+    Strip the Secure flag from session/CSRF cookies on plain-HTTP requests
+    to internal admin hosts, so admin login works at
+    http://wielandtech.k8s.local/ while public hosts keep Secure cookies.
+    Must be placed BEFORE SessionMiddleware and CsrfViewMiddleware in
+    MIDDLEWARE so it processes the response after they set their cookies.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+
+        host = request.get_host().split(':')[0]
+        if not request.is_secure() and host in INTERNAL_ADMIN_HOSTS:
+            for name in (settings.SESSION_COOKIE_NAME, settings.CSRF_COOKIE_NAME):
+                if name in response.cookies:
+                    # An empty value removes the Secure attribute
+                    response.cookies[name]['secure'] = ''
+
         return response
 
 
