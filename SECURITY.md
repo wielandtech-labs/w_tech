@@ -20,6 +20,12 @@ When `DEBUG=False`, the following security features are enabled:
 #### Cookie Security
 - `CSRF_COOKIE_SECURE = True` - CSRF cookies only sent over HTTPS
 - `SESSION_COOKIE_SECURE = True` - Session cookies only sent over HTTPS
+- **Internal-host exception**: `InternalAdminCookieMiddleware` strips the
+  `Secure` flag from the session/CSRF cookies for plain-HTTP requests on the
+  internal admin hosts (`wielandtech.k8s.local`, `127.0.0.1`, `localhost`).
+  Without this, admin login at `http://wielandtech.k8s.local/admin/` fails
+  CSRF verification because browsers never send `Secure` cookies over HTTP.
+  Public hosts keep fully `Secure` cookies.
 - `SESSION_COOKIE_HTTPONLY = True` - JavaScript cannot access session cookies
 - `CSRF_COOKIE_HTTPONLY = True` - JavaScript cannot access CSRF cookies
 - `SESSION_COOKIE_SAMESITE = 'Lax'` - CSRF protection
