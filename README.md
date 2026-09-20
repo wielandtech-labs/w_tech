@@ -118,7 +118,6 @@ pip install -r requirements.txt
 # Django settings
 DJANGO_SECRET_KEY='your-secret-key'
 DEBUG=True
-ALLOWED_HOSTS=your-domain.com,www.your-domain.com,your-ip-address
 
 # Database configuration
 DATABASE_NAME=your_db_name

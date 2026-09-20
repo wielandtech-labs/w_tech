@@ -5,7 +5,10 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
 
-from wielandtech.middleware import InternalAdminCookieMiddleware
+from wielandtech.middleware import (
+    InternalAdminCookieMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 
 class InternalAdminCookieMiddlewareTests(SimpleTestCase):
@@ -45,3 +48,28 @@ class InternalAdminCookieMiddlewareTests(SimpleTestCase):
             get_response=lambda request: HttpResponse(),
         )
         self.assertEqual(len(response.cookies), 0)
+
+
+class SecurityHeadersMiddlewareTests(SimpleTestCase):
+    def _run(self, host):
+        middleware = SecurityHeadersMiddleware(lambda request: HttpResponse())
+        request = RequestFactory().get('/', HTTP_HOST=host)
+        return middleware(request)
+
+    def test_sets_csp_on_public_hosts(self):
+        for host in ('wielandtech.com', 'raphaelwieland.com',
+                     'www.raphaelwieland.com'):
+            with self.subTest(host=host):
+                self.assertIn('Content-Security-Policy', self._run(host))
+
+    def test_ignores_port_when_matching_host(self):
+        self.assertIn('Content-Security-Policy', self._run('raphaelwieland.com:443'))
+
+    def test_omits_csp_on_internal_host(self):
+        self.assertNotIn('Content-Security-Policy', self._run('wielandtech.k8s.local'))
+
+    def test_always_sets_baseline_headers(self):
+        response = self._run('wielandtech.k8s.local')
+        self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(response['X-Frame-Options'], 'DENY')
+        self.assertEqual(response['Referrer-Policy'], 'strict-origin-when-cross-origin')
