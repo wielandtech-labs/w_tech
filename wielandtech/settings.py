@@ -19,6 +19,8 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = [
     "wielandtech.com",
     "www.wielandtech.com",
+    "raphaelwieland.com",
+    "www.raphaelwieland.com",
     "dev.wielandtech.com",
     "qa.wielandtech.com",
     ".review.wielandtech.com",
@@ -34,6 +36,8 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://www.wielandtech.com",
     "https://wielandtech.com",
+    "https://raphaelwieland.com",
+    "https://www.raphaelwieland.com",
     "https://wielandtech.k8s.local",
     "http://wielandtech.k8s.local",
     "http://dev.wielandtech.com",

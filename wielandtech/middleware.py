@@ -11,6 +11,14 @@ INTERNAL_ADMIN_HOSTS = [
     'localhost',
 ]
 
+# Public domains that should receive the Content-Security-Policy header.
+CSP_HOSTS = [
+    'wielandtech.com',
+    'www.wielandtech.com',
+    'raphaelwieland.com',
+    'www.raphaelwieland.com',
+]
+
 
 class AllowMetricsEndpointMiddleware:
     """
@@ -100,7 +108,7 @@ class SecurityHeadersMiddleware:
         
         # Add CSP for public domains only
         host = request.get_host().split(':')[0]
-        if host in ['wielandtech.com', 'www.wielandtech.com']:
+        if host in CSP_HOSTS:
             response['Content-Security-Policy'] = (
                 "default-src 'self'; "
                 "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
