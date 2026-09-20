@@ -48,5 +48,12 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   when convenient.
 - Secrets (Django key, DB, OAuth, email) are SealedSecrets in w_homelab —
   never commit secrets or `.env` files here.
+- **Adding a public hostname is an app change, not just a manifest change.**
+  `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` are hardcoded lists in
+  `wielandtech/settings.py` (no env var feeds them, despite what older docs
+  suggested), and `CSP_HOSTS` in `wielandtech/middleware.py` gates the
+  Content-Security-Policy header — miss it and the new host serves with no
+  CSP. Merge the app change to `main` *before* the w_homelab ingress PR, or
+  the new host returns `400 DisallowedHost` until the deploy lands.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.
