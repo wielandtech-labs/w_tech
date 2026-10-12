@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 def homepage(request):
+    if getattr(request, 'is_portfolio', False):
+        return render(request, 'core/portfolio.html')
     return render(request, 'core/index.html')
 
 
@@ -51,7 +53,7 @@ Message:
 {message}
 
 ---
-This message was sent from the contact form on wielandtech.com
+This message was sent from the contact form on {request.get_host()}
             """.strip()
             
             try:
