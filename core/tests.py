@@ -171,6 +171,13 @@ class ClusterMetricsViewTests(TestCase):
         self.assertEqual(data['errors'], ['requests_per_second'])
         self.assertIsNotNone(data['cpu'])
 
+    def test_imperfect_availability_never_rounds_to_100(self):
+        for raw, shown in [(99.996, 99.99), (100.0, 100.0)]:
+            cache.clear()
+            with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_percent': raw})):
+                data = self.client.get(self.url).json()
+            self.assertEqual(data['availability']['percentage'], shown)
+
     def test_empty_healthy_count_means_zero(self):
         with mock.patch('core.views.requests.get', side_effect=self._fake_get({'deployments_healthy': None})):
             data = self.client.get(self.url).json()

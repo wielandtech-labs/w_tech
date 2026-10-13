@@ -261,7 +261,9 @@ def _cluster_metrics_response():
 
     if present('availability_percent', 'probed_services'):
         metrics['availability'] = {
-            'percentage': round(values['availability_percent'], 2),
+            # Never round an imperfect month up to a perfect 100.00
+            'percentage': (100.0 if values['availability_percent'] >= 100
+                           else min(round(values['availability_percent'], 2), 99.99)),
             'services': int(values['probed_services']),
             'description': 'Availability (30d)',
         }
