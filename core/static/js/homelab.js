@@ -1,155 +1,99 @@
-// Fetch and display Netdata metrics
+// Fetch and display cluster metrics (sourced from Prometheus)
+function metricCard(label, value, detail, bar) {
+    let barHtml = '';
+    if (bar) {
+        barHtml = `
+            <div class="metric-bar">
+                <div class="metric-bar-fill ${bar.cls}" style="width: ${Math.min(bar.percent, 100)}%"></div>
+            </div>`;
+    }
+    return `
+        <div class="metric-card">
+            <div class="metric-label">${label}</div>
+            <div class="metric-value">${value}</div>
+            <div class="metric-detail">${detail}</div>${barHtml}
+        </div>
+    `;
+}
+
 function fetchMetrics() {
     fetch('/api/metrics/')
         .then(response => response.json())
         .then(data => {
-            console.log('Metrics response:', data);  // Debug logging
-            
             if (data.status === 'unavailable' || data.status === 'error') {
                 let errorMsg = 'Metrics temporarily unavailable';
                 if (data.error) {
                     errorMsg += ': ' + data.error;
                 }
-                if (data.errors && data.errors.length > 0) {
-                    errorMsg += ' (' + data.errors.join(', ') + ')';
-                }
-                document.getElementById('metrics-content').innerHTML = 
+                document.getElementById('metrics-content').innerHTML =
                     '<div class="metrics-error">' + errorMsg + '</div>';
                 return;
             }
-            
+
             let html = '<div class="metrics-grid">';
 
-            // Row 1: Utilization metrics
-            // CPU Utilization Card
-            if (data.cpu !== null) {
-                const cpuClass = data.cpu.percentage > 80 ? 'critical' : (data.cpu.percentage > 60 ? 'warning' : '');
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.cpu.description}</div>
-                        <div class="metric-value">${data.cpu.percentage}%</div>
-                        <div class="metric-detail">${data.cpu.total_cores} cores total</div>
-                        <div class="metric-bar">
-                            <div class="metric-bar-fill ${cpuClass}" style="width: ${Math.min(data.cpu.percentage, 100)}%"></div>
-                        </div>
-                    </div>
-                `;
+            // Row 1: reliability and fleet
+            if (data.availability) {
+                const a = data.availability;
+                const cls = a.percentage < 99 ? 'critical' : (a.percentage < 99.9 ? 'warning' : '');
+                html += metricCard(a.description, `${a.percentage}%`,
+                    `across ${a.services} monitored services`, {percent: a.percentage, cls: cls});
             }
 
-            // Memory Utilization Card
-            if (data.memory !== null) {
-                const memoryClass = data.memory.percentage > 85 ? 'critical' : (data.memory.percentage > 70 ? 'warning' : '');
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.memory.description}</div>
-                        <div class="metric-value">${data.memory.percentage}%</div>
-                        <div class="metric-detail">${data.memory.used_gb} / ${data.memory.total_gb} GB</div>
-                        <div class="metric-bar">
-                            <div class="metric-bar-fill ${memoryClass}" style="width: ${Math.min(data.memory.percentage, 100)}%"></div>
-                        </div>
-                    </div>
-                `;
+            if (data.deployments) {
+                const d = data.deployments;
+                const unhealthy = d.total - d.healthy;
+                html += metricCard(d.description, `${d.healthy}/${d.total}`,
+                    unhealthy === 0 ? 'all at desired replicas' : `${unhealthy} degraded`);
             }
 
-            // Disk I/O Card
-            if (data.disk_io !== null) {
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.disk_io.description}</div>
-                        <div class="metric-value">${data.disk_io.total_mbps} MB/s</div>
-                        <div class="metric-detail">↑ ${data.disk_io.write_mbps} · ↓ ${data.disk_io.read_mbps} MB/s</div>
-                    </div>
-                `;
+            if (data.pods) {
+                html += metricCard(data.pods.description, data.pods.count, 'in cluster');
             }
 
-            // Network Utilization Card
-            if (data.network !== null) {
-                let networkValue, networkDetail;
-                if (data.network.bandwidth_mbps !== undefined) {
-                    networkValue = `${data.network.bandwidth_mbps} Mbps`;
-                    networkDetail = `↑ ${data.network.sent_mbps} · ↓ ${data.network.received_mbps} Mbps`;
-                } else {
-                    networkValue = 'N/A';
-                    networkDetail = 'metrics unavailable';
-                }
-
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.network.description}</div>
-                        <div class="metric-value">${networkValue}</div>
-                        <div class="metric-detail">${networkDetail}</div>
-                    </div>
-                `;
+            if (data.nodes) {
+                const n = data.nodes;
+                html += metricCard(n.description, n.count,
+                    n.ready !== null && n.ready !== undefined ? `${n.ready} ready` : 'bare-metal + GPU');
             }
 
-            // Row 2: Other metrics (CPU Temp under CPU Util)
-            // CPU Temperature Card
-            if (data.temperature !== null) {
-                const tempClass = data.temperature.max_celsius > 80 ? 'critical' : (data.temperature.max_celsius > 65 ? 'warning' : '');
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.temperature.description}</div>
-                        <div class="metric-value ${tempClass}">${data.temperature.avg_celsius}°C</div>
-                        <div class="metric-detail">peak ${data.temperature.max_celsius}°C</div>
-                    </div>
-                `;
+            // Row 2: capacity and traffic
+            if (data.cpu) {
+                const c = data.cpu;
+                const cls = c.percentage > 80 ? 'critical' : (c.percentage > 60 ? 'warning' : '');
+                html += metricCard(c.description, `${c.percentage}%`,
+                    `${c.total_cores} cores across bare-metal nodes`, {percent: c.percentage, cls: cls});
             }
 
-            // Pods Running Card
-            if (data.pods !== null) {
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.pods.description}</div>
-                        <div class="metric-value">${data.pods.count}</div>
-                        <div class="metric-detail">in cluster</div>
-                    </div>
-                `;
+            if (data.memory) {
+                const m = data.memory;
+                const cls = m.percentage > 85 ? 'critical' : (m.percentage > 70 ? 'warning' : '');
+                html += metricCard(m.description, `${m.percentage}%`,
+                    `${m.used_gb} / ${m.total_gb} GB`, {percent: m.percentage, cls: cls});
             }
 
-            // Deployments Card
-            if (data.deployments !== null) {
-                const deployClass = data.deployments.healthy < data.deployments.total ? 'warning' : '';
-                const deployDetail = data.deployments.healthy === data.deployments.total ? 'all healthy' : `${data.deployments.total - data.deployments.healthy} unhealthy`;
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.deployments.description}</div>
-                        <div class="metric-value ${deployClass}">${data.deployments.healthy}/${data.deployments.total}</div>
-                        <div class="metric-detail">${deployDetail}</div>
-                    </div>
-                `;
+            if (data.traffic) {
+                html += metricCard(data.traffic.description,
+                    `${data.traffic.requests_per_second} req/s`, 'through Traefik (5m avg)');
             }
 
-            // Cluster Uptime Card
-            if (data.uptime !== null) {
-                html += `
-                    <div class="metric-card">
-                        <div class="metric-label">${data.uptime.description}</div>
-                        <div class="metric-value">${data.uptime.formatted}</div>
-                        <div class="metric-detail">since last reboot</div>
-                    </div>
-                `;
+            if (data.database) {
+                const db = data.database;
+                const size = db.size_mb >= 1000 ? `${(db.size_mb / 1000).toFixed(1)} GB` : `${db.size_mb} MB`;
+                html += metricCard(db.description, size, `${db.databases} databases on CNPG`);
             }
 
             html += '</div>';
-            
-            // Add status indicator
-            let statusParts = [];
-            if (data.nodes_count) {
-                const reachable = data.reachable_nodes || 0;
-                statusParts.push(reachable + '/' + data.nodes_count + ' nodes');
+
+            if (data.status === 'cached') {
+                html += '<div class="metrics-status">Showing last known values</div>';
             }
-            if (data.errors && data.errors.length > 0) {
-                statusParts.push(data.errors.length + ' warnings');
-            }
-            if (statusParts.length > 0) {
-                html += '<div class="metrics-status">' + statusParts.join(' • ') + '</div>';
-            }
-            
+
             document.getElementById('metrics-content').innerHTML = html;
         })
         .catch(error => {
             console.error('Error fetching metrics:', error);
-            document.getElementById('metrics-content').innerHTML = 
+            document.getElementById('metrics-content').innerHTML =
                 '<div class="metrics-error">Unable to load metrics</div>';
         });
 }
@@ -157,5 +101,5 @@ function fetchMetrics() {
 // Initial fetch
 fetchMetrics();
 
-// Refresh every second
-setInterval(fetchMetrics, 1000);
+// Refresh every 30 seconds (matches the server-side cache TTL)
+setInterval(fetchMetrics, 30000);

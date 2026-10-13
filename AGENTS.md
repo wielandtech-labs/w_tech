@@ -60,7 +60,9 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   (`wielandtech-labs/w_portfolio`, static Astro): its nginx 308s every path it
   doesn't serve to raphaelwieland.com, and proxies `/api/metrics/` here
   in-cluster with `Host: raphaelwieland.com`, so keep that endpoint's path and
-  shape stable. The `Site` record (sitemap, password-reset links) points at
+  shape stable: its `LiveStats.astro` reads fields from the JSON, and
+  `ClusterMetricsViewTests.test_w_portfolio_contract` pins them. Remove a
+  field only after w_portfolio has stopped reading it in prod. The `Site` record (sitemap, password-reset links) points at
   raphaelwieland.com.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.

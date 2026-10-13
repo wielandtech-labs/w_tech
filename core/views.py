@@ -7,7 +7,6 @@ from django.contrib import messages
 from django.utils.html import format_html
 import requests
 import logging
-# from kubernetes import client, config  # No longer needed - using k8s_state metrics
 
 logger = logging.getLogger(__name__)
 
@@ -138,524 +137,198 @@ def maintenance(request):
     return render(request, 'core/maintenance.html', status=503)
 
 
-def get_netdata_metrics(request):
+CLUSTER_METRICS_TTL = 30  # seconds; homelab.js polls on the same interval
+CLUSTER_METRICS_BACKUP_TTL = 60 * 60  # served when Prometheus is unreachable
+
+CLUSTER_QUERIES = {
+    'cpu_percent': '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
+    'cpu_cores': 'count(node_cpu_seconds_total{mode="idle"})',
+    'mem_used_bytes': 'sum(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)',
+    'mem_total_bytes': 'sum(node_memory_MemTotal_bytes)',
+    # Share of 5-minute steps each blackbox target was up, averaged over targets
+    'availability_percent': 'avg(avg_over_time((max by (target) (probe_success))[30d:5m])) * 100',
+    'probed_services': 'count(count by (target) (probe_success))',
+    'nodes': 'count(kube_node_info)',
+    'nodes_ready': 'sum(kube_node_status_condition{condition="Ready",status="true"})',
+    # Most recently rebooted node (node-exporter runs on the bare-metal nodes)
+    'uptime_seconds': 'min(time() - node_boot_time_seconds)',
+    'pods_running': 'sum(kube_pod_status_phase{phase="Running"})',
+    'deployments_total': 'count(kube_deployment_spec_replicas)',
+    'deployments_healthy': 'count(kube_deployment_status_replicas_available >= kube_deployment_spec_replicas)',
+    'requests_per_second': 'sum(rate(traefik_service_requests_total[5m]))',
+    # CNPG exports the same database from every replica; dedupe by datname
+    'db_size_bytes': 'sum(max by (datname) (cnpg_pg_database_size_bytes))',
+    'db_count': 'count(max by (datname) (cnpg_pg_database_size_bytes))',
+}
+
+
+def _format_uptime(seconds):
+    days = int(seconds // 86400)
+    hours = int((seconds % 86400) // 3600)
+    minutes = int((seconds % 3600) // 60)
+    if days > 0:
+        return f"{days}d {hours}h"
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
+def _prom(query):
+    """Run an instant PromQL query and return the first sample as a float.
+
+    Returns None when the query yields no data. Raises on connection errors so
+    the caller can tell "Prometheus is down" apart from "metric missing".
     """
-    Fetch cluster metrics from Netdata k8s_state collector.
-    Shows cluster CPU utilization, memory usage, pod counts, and network activity.
-    Implements caching to reduce API calls.
+    response = requests.get(
+        f"{settings.PROMETHEUS_URL}/api/v1/query",
+        params={'query': query},
+        timeout=3,
+    )
+    response.raise_for_status()
+    result = response.json().get('data', {}).get('result', [])
+    if not result:
+        return None
+    return float(result[0]['value'][1])
+
+
+def get_cluster_metrics(request):
     """
-    cached_metrics = cache.get('netdata_metrics')
+    Cluster metrics for the homelab page, sourced from Prometheus
+    (node-exporter, kube-state-metrics, blackbox-exporter, Traefik, CNPG).
+    Each card degrades to None independently; results are cached for 30s.
+    """
+    try:
+        return _cluster_metrics_response()
+    except Exception as e:
+        # e.g. Redis down: keep the JSON contract homelab.js expects
+        logger.error(f"Unexpected error fetching cluster metrics: {e}")
+        return JsonResponse({'status': 'error', 'error': 'Internal error'})
+
+
+def _cluster_metrics_response():
+    cached_metrics = cache.get('cluster_metrics')
     if cached_metrics:
         cached_metrics['cache_hit'] = True
         return JsonResponse(cached_metrics)
 
-    try:
-        netdata_url = settings.NETDATA_URL
-        timeout = 3
-        logger.warning(f"Using Netdata URL: {netdata_url}")
+    values = {}
+    errors = []
+    for key, query in CLUSTER_QUERIES.items():
+        try:
+            values[key] = _prom(query)
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            # Prometheus is unreachable or hung; don't wait on every remaining query
+            logger.warning(f"Prometheus unreachable: {e}")
+            values = dict.fromkeys(CLUSTER_QUERIES)
+            errors = list(CLUSTER_QUERIES)
+            break
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Prometheus query {key} failed: {e}")
+            values[key] = None
+            errors.append(key)
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            logger.warning(f"Unexpected Prometheus response for {key}: {e}")
+            values[key] = None
+            errors.append(key)
 
-        # Cluster constants
-        cluster_cores = 18  # 3 nodes * 6 cores per node
-        cluster_ram_gb = 48  # 3 nodes * 16GB per node
+    if len(errors) == len(CLUSTER_QUERIES):
+        backup = cache.get('cluster_metrics_backup')
+        if backup:
+            backup['status'] = 'cached'
+            backup['cache_hit'] = True
+            return JsonResponse(backup)
+        return JsonResponse({
+            'status': 'unavailable',
+            'error': 'Unable to connect to monitoring service',
+        })
 
-        metrics = {
-            'cpu': None,
-            'memory': None,
-            'pods': None,
-            'network': None,
-            'disk_io': None,
-            'uptime': None,
-            'temperature': None,
-            'deployments': None,
-            'status': 'ok',
-            'cache_hit': False,
-            'errors': [],
-            'nodes_count': 3,
-            'reachable_nodes': 3,
+    def present(*keys):
+        return all(values[k] is not None for k in keys)
+
+    metrics = {
+        'availability': None,
+        'deployments': None,
+        'pods': None,
+        'nodes': None,
+        'cpu': None,
+        'memory': None,
+        'traffic': None,
+        'database': None,
+        'status': 'ok',
+        'cache_hit': False,
+        'errors': errors,
+    }
+
+    if present('availability_percent', 'probed_services'):
+        metrics['availability'] = {
+            # Never round an imperfect month up to a perfect 100.00
+            'percentage': (100.0 if values['availability_percent'] >= 100
+                           else min(round(values['availability_percent'], 2), 99.99)),
+            'services': int(values['probed_services']),
+            'description': 'Availability (30d)',
+        }
+    if present('deployments_total') and 'deployments_healthy' not in errors:
+        metrics['deployments'] = {
+            'total': int(values['deployments_total']),
+            # count() of an empty vector returns no data, i.e. zero healthy
+            'healthy': int(values['deployments_healthy'] or 0),
+            'description': 'Deployments Healthy',
+        }
+    if present('pods_running'):
+        metrics['pods'] = {
+            'count': int(values['pods_running']),
+            'description': 'Pods Running',
+        }
+    if present('nodes'):
+        metrics['nodes'] = {
+            'count': int(values['nodes']),
+            'ready': None if 'nodes_ready' in errors else int(values['nodes_ready'] or 0),
+            'description': 'Nodes',
+        }
+    if present('cpu_percent', 'cpu_cores'):
+        metrics['cpu'] = {
+            'percentage': round(values['cpu_percent'], 1),
+            'total_cores': int(values['cpu_cores']),
+            'description': 'CPU Utilization',
+        }
+    if present('mem_used_bytes', 'mem_total_bytes') and values['mem_total_bytes'] > 0:
+        metrics['memory'] = {
+            'used_gb': round(values['mem_used_bytes'] / 2**30, 1),
+            'total_gb': round(values['mem_total_bytes'] / 2**30, 1),
+            'percentage': round(values['mem_used_bytes'] / values['mem_total_bytes'] * 100, 1),
+            'description': 'Memory Utilization',
+        }
+    if present('requests_per_second'):
+        metrics['traffic'] = {
+            'requests_per_second': round(values['requests_per_second'], 1),
+            'description': 'Ingress Traffic',
+        }
+    if present('db_size_bytes', 'db_count'):
+        metrics['database'] = {
+            'size_mb': round(values['db_size_bytes'] / 10**6),
+            'databases': int(values['db_count']),
+            'description': 'Postgres Data',
         }
 
-        # Get list of nodes to query
-        netdata_hosts = settings.NETDATA_HOSTS
-        logger.warning(f"Querying nodes: {netdata_hosts}")
+    # Legacy fields read by w_portfolio's LiveStats (wielandtech.com) until it
+    # moves to the cards above; drop them once it no longer does.
+    if metrics['nodes'] and metrics['nodes']['ready'] is not None:
+        metrics['nodes_count'] = metrics['nodes']['count']
+        metrics['reachable_nodes'] = metrics['nodes']['ready']
+    metrics['uptime'] = None
+    if present('uptime_seconds'):
+        metrics['uptime'] = {
+            'seconds': int(values['uptime_seconds']),
+            'formatted': _format_uptime(values['uptime_seconds']),
+            'days': int(values['uptime_seconds'] // 86400),
+            'description': 'Uptime',
+        }
 
-        # Get CPU utilization aggregated across nodes
-        try:
-            total_cpu_percentage = 0
-            node_count = 0
-
-            for node in netdata_hosts:
-                try:
-                    cpu_response = requests.get(
-                        f"{netdata_url}/api/v1/data",
-                        params={'chart': 'system.cpu', 'node': node, 'points': 1, 'after': -10},
-                        timeout=timeout
-                    )
-
-                    logger.warning(f"CPU API call for node {node}: {netdata_url}/api/v1/data?chart=system.cpu&node={node}&points=1&after=-10")
-                    logger.warning(f"CPU response status for {node}: {cpu_response.status_code}")
-
-                    if cpu_response.status_code == 200:
-                        cpu_data = cpu_response.json()
-                        logger.warning(f"CPU response data for {node}: {cpu_data}")
-                        if 'data' in cpu_data and len(cpu_data['data']) > 0:
-                            latest = cpu_data['data'][0]
-                            logger.warning(f"CPU latest data for {node}: {latest}")
-                            if len(latest) >= 2:
-                                # CPU data is an array of different CPU usage types, sum them for total usage
-                                # Skip timestamp (index 0) and sum all CPU values including iowait
-                                cpu_values = [v for v in latest[1:] if isinstance(v, (int, float))]
-                                node_cpu_usage = sum(cpu_values)
-                                logger.warning(f"CPU values for {node}: {cpu_values}, total: {node_cpu_usage}")
-                                total_cpu_percentage += node_cpu_usage
-                                node_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to fetch CPU from node {node}: {e}")
-                    continue
-
-            if node_count > 0:
-                # Average CPU across all nodes
-                avg_cpu_percentage = total_cpu_percentage / node_count
-                logger.warning(f"Aggregated CPU: {total_cpu_percentage} total from {node_count} nodes, average: {avg_cpu_percentage}")
-                metrics['cpu'] = {
-                    'percentage': round(avg_cpu_percentage, 1),
-                    'total_cores': cluster_cores,
-                    'description': 'CPU Utilization'
-                }
-            else:
-                metrics['cpu'] = {
-                    'percentage': 0.0,
-                    'total_cores': cluster_cores,
-                    'description': 'CPU Utilization (no nodes available)'
-                }
-        except Exception as e:
-            logger.warning(f"Failed to fetch CPU metrics: {e}")
-            metrics['cpu'] = {
-                'percentage': 0.0,
-                'total_cores': cluster_cores,
-                'description': 'CPU Utilization (error)'
-            }
-
-        # Get memory utilization aggregated across nodes
-        try:
-            total_used_memory_mb = 0
-            total_total_memory_mb = 0
-            memory_node_count = 0
-
-            for node in netdata_hosts:
-                try:
-                    memory_response = requests.get(
-                        f"{netdata_url}/api/v1/data",
-                        params={'chart': 'system.ram', 'node': node, 'points': 1, 'after': -10},
-                        timeout=timeout
-                    )
-
-                    logger.warning(f"Memory API call for node {node}: {netdata_url}/api/v1/data?chart=system.ram&node={node}&points=1&after=-10")
-                    logger.warning(f"Memory response status for {node}: {memory_response.status_code}")
-
-                    if memory_response.status_code == 200:
-                        memory_data = memory_response.json()
-                        logger.warning(f"Memory response data for {node}: {memory_data}")
-                        if 'data' in memory_data and len(memory_data['data']) > 0:
-                            latest = memory_data['data'][0]
-                            logger.warning(f"Memory latest data for {node}: {latest}")
-                            # Memory data format: [time, free, used, cached, buffers] (in MB)
-                            if len(latest) >= 5:
-                                memory_free_mb = latest[1] if isinstance(latest[1], (int, float)) else 0
-                                memory_used_mb = latest[2] if isinstance(latest[2], (int, float)) else 0
-                                memory_cached_mb = latest[3] if isinstance(latest[3], (int, float)) else 0
-                                memory_buffers_mb = latest[4] if isinstance(latest[4], (int, float)) else 0
-
-                                # Total memory = used + free + cached + buffers
-                                node_total_mb = memory_used_mb + memory_free_mb + memory_cached_mb + memory_buffers_mb
-                                logger.warning(f"Memory for {node} - free: {memory_free_mb}MB, used: {memory_used_mb}MB, cached: {memory_cached_mb}MB, buffers: {memory_buffers_mb}MB, total: {node_total_mb}MB")
-
-                                total_used_memory_mb += memory_used_mb
-                                total_total_memory_mb += node_total_mb
-                                memory_node_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to fetch RAM from node {node}: {e}")
-                    continue
-
-            if memory_node_count > 0:
-                # Calculate cluster-wide memory metrics
-                memory_used_gb = round(total_used_memory_mb / 1024, 1)
-                memory_total_gb = round(total_total_memory_mb / 1024, 1)
-                memory_percentage = round((total_used_memory_mb / total_total_memory_mb) * 100, 1) if total_total_memory_mb > 0 else 0
-                logger.warning(f"Total Cluster Memory: {total_used_memory_mb}MB used, {total_total_memory_mb}MB total across {memory_node_count} nodes")
-
-                metrics['memory'] = {
-                    'total_gb': memory_total_gb,
-                    'used_gb': memory_used_gb,
-                    'percentage': memory_percentage,
-                    'description': 'Memory Utilization'
-                }
-            else:
-                metrics['memory'] = {
-                    'total_gb': cluster_ram_gb,
-                    'used_gb': 0.0,
-                    'percentage': 0.0,
-                    'description': 'Memory Utilization (no nodes available)'
-                }
-        except Exception as e:
-            logger.warning(f"Failed to fetch memory metrics: {e}")
-            metrics['memory'] = {
-                'total_gb': cluster_ram_gb,
-                'used_gb': 0.0,
-                'percentage': 0.0,
-                'description': 'Memory Utilization (error)'
-            }
-
-        # Get pod count from k8s_state collector using API v2 with context aggregation
-        try:
-            # Use API v2 with contexts to get running pods across all nodes
-            # The k8s_state.node_pods_phase context spans multiple nodes
-            pods_response = requests.get(
-                f"{netdata_url}/api/v2/data",
-                params={
-                    'contexts': 'k8s_state.node_pods_phase',
-                    'dimensions': 'running',
-                    'points': 1
-                },
-                timeout=timeout
-            )
-
-            if pods_response.status_code == 200:
-                pods_data = pods_response.json()
-                # API v2 returns summary.instances with per-node data
-                # Sum the 'avg' (which is current value) from each instance
-                running_pods = 0
-                if 'summary' in pods_data and 'instances' in pods_data['summary']:
-                    for instance in pods_data['summary']['instances']:
-                        if 'sts' in instance and 'avg' in instance['sts']:
-                            running_pods += int(instance['sts']['avg'])
-
-                metrics['pods'] = {
-                    'count': running_pods,
-                    'description': 'Pods Running'
-                }
-            else:
-                logger.warning(f"Pods API returned status {pods_response.status_code}")
-                metrics['pods'] = {
-                    'count': 0,
-                    'description': 'Pods Running (unavailable)'
-                }
-        except Exception as e:
-            logger.warning(f"Failed to fetch pod counts: {e}")
-            metrics['pods'] = {
-                'count': 0,
-                'description': 'Pods Running (error)'
-            }
-
-        # Get network metrics using API v2 with net.net context (aggregates all interfaces)
-        # Values are in kilobits/s, sent values are negative
-        try:
-            net_response = requests.get(
-                f"{netdata_url}/api/v2/data",
-                params={
-                    'contexts': 'net.net',
-                    'nodes': ','.join(netdata_hosts),
-                    'points': 1,
-                    'after': -10  # Get data from last 10 seconds for real-time values
-                },
-                timeout=timeout
-            )
-
-            if net_response.status_code == 200:
-                net_data = net_response.json()
-                # API v2 returns result.data with format [timestamp, [received, arp, pa], [sent, arp, pa]]
-                if 'result' in net_data and 'data' in net_data['result'] and len(net_data['result']['data']) > 0:
-                    latest = net_data['result']['data'][0]
-                    # Format: [timestamp, [received_value, ...], [sent_value, ...]]
-                    received_kbps = 0
-                    sent_kbps = 0
-                    if len(latest) >= 3:
-                        # received is positive, sent is negative in netdata
-                        if isinstance(latest[1], list) and len(latest[1]) > 0:
-                            received_kbps = abs(latest[1][0]) if isinstance(latest[1][0], (int, float)) else 0
-                        if isinstance(latest[2], list) and len(latest[2]) > 0:
-                            sent_kbps = abs(latest[2][0]) if isinstance(latest[2][0], (int, float)) else 0
-
-                    # Convert kilobits/s to Mbps (1 Mbps = 1000 kbps)
-                    received_mbps = round(received_kbps / 1000, 2)
-                    sent_mbps = round(sent_kbps / 1000, 2)
-
-                    # Count how many nodes contributed
-                    node_count = len(net_data.get('summary', {}).get('nodes', [])) or len(netdata_hosts)
-
-                    metrics['network'] = {
-                        'bandwidth_mbps': round(received_mbps + sent_mbps, 2),
-                        'received_mbps': received_mbps,
-                        'sent_mbps': sent_mbps,
-                        'description': 'Network Utilization'
-                    }
-                else:
-                    metrics['network'] = None
-            else:
-                logger.warning(f"Network API returned status {net_response.status_code}")
-                metrics['network'] = None
-        except Exception as e:
-            logger.warning(f"Failed to fetch network metrics: {e}")
-            metrics['network'] = None
-
-        # Get disk I/O metrics aggregated across nodes
-        try:
-            total_read_kbps = 0
-            total_write_kbps = 0
-            disk_node_count = 0
-
-            for node in netdata_hosts:
-                try:
-                    disk_response = requests.get(
-                        f"{netdata_url}/api/v1/data",
-                        params={'chart': 'system.io', 'node': node, 'points': 1, 'after': -10},
-                        timeout=timeout
-                    )
-
-                    if disk_response.status_code == 200:
-                        disk_data = disk_response.json()
-                        if 'data' in disk_data and len(disk_data['data']) > 0:
-                            latest = disk_data['data'][0]
-                            # Disk I/O format: [time, in (read), out (write)] in KiB/s
-                            if len(latest) >= 3:
-                                read_kbps = abs(latest[1]) if isinstance(latest[1], (int, float)) else 0
-                                write_kbps = abs(latest[2]) if isinstance(latest[2], (int, float)) else 0
-                                total_read_kbps += read_kbps
-                                total_write_kbps += write_kbps
-                                disk_node_count += 1
-                except Exception as e:
-                    logger.warning(f"Failed to fetch disk I/O from node {node}: {e}")
-                    continue
-
-            if disk_node_count > 0:
-                # Convert KiB/s to MB/s
-                read_mbps = round(total_read_kbps / 1024, 2)
-                write_mbps = round(total_write_kbps / 1024, 2)
-                metrics['disk_io'] = {
-                    'read_mbps': read_mbps,
-                    'write_mbps': write_mbps,
-                    'total_mbps': round(read_mbps + write_mbps, 2),
-                    'description': 'Disk I/O'
-                }
-        except Exception as e:
-            logger.warning(f"Failed to fetch disk I/O metrics: {e}")
-            metrics['disk_io'] = None
-
-        # Get uptime from the first reachable node (representative of cluster)
-        try:
-            max_uptime_seconds = 0
-            min_uptime_seconds = float('inf')
-
-            for node in netdata_hosts:
-                try:
-                    uptime_response = requests.get(
-                        f"{netdata_url}/api/v1/data",
-                        params={'chart': 'system.uptime', 'node': node, 'points': 1, 'after': -10},
-                        timeout=timeout
-                    )
-
-                    if uptime_response.status_code == 200:
-                        uptime_data = uptime_response.json()
-                        if 'data' in uptime_data and len(uptime_data['data']) > 0:
-                            latest = uptime_data['data'][0]
-                            if len(latest) >= 2:
-                                node_uptime = latest[1] if isinstance(latest[1], (int, float)) else 0
-                                max_uptime_seconds = max(max_uptime_seconds, node_uptime)
-                                min_uptime_seconds = min(min_uptime_seconds, node_uptime)
-                except Exception as e:
-                    logger.warning(f"Failed to fetch uptime from node {node}: {e}")
-                    continue
-
-            if max_uptime_seconds > 0:
-                # Use minimum uptime (most recent reboot) for cluster uptime
-                uptime_seconds = min_uptime_seconds if min_uptime_seconds != float('inf') else max_uptime_seconds
-                # Convert to days, hours, minutes
-                days = int(uptime_seconds // 86400)
-                hours = int((uptime_seconds % 86400) // 3600)
-                minutes = int((uptime_seconds % 3600) // 60)
-
-                if days > 0:
-                    uptime_str = f"{days}d {hours}h"
-                elif hours > 0:
-                    uptime_str = f"{hours}h {minutes}m"
-                else:
-                    uptime_str = f"{minutes}m"
-
-                metrics['uptime'] = {
-                    'seconds': int(uptime_seconds),
-                    'formatted': uptime_str,
-                    'days': days,
-                    'description': 'Uptime'
-                }
-        except Exception as e:
-            logger.warning(f"Failed to fetch uptime metrics: {e}")
-            metrics['uptime'] = None
-
-        # Get CPU temperature using the correct context from Netdata
-        try:
-            temps = []
-            
-            # Use API v2 with the correct context for temperature sensors
-            temp_response = requests.get(
-                f"{netdata_url}/api/v2/data",
-                params={
-                    'contexts': 'system.hw.sensor.temperature.input',
-                    'nodes': ','.join(netdata_hosts),
-                    'points': 1
-                },
-                timeout=timeout
-            )
-
-            if temp_response.status_code == 200:
-                temp_data = temp_response.json()
-                
-                # Extract temperatures from dimensions - look for Package or Core temps
-                if 'summary' in temp_data and 'dimensions' in temp_data['summary']:
-                    for dim in temp_data['summary']['dimensions']:
-                        dim_id = dim.get('id', '').lower()
-                        # Prioritize Package temps (overall CPU temp), also accept Core temps
-                        if 'package' in dim_id or 'coretemp' in dim_id:
-                            if 'sts' in dim and 'avg' in dim['sts']:
-                                temp_val = dim['sts']['avg']
-                                if isinstance(temp_val, (int, float)) and 20 < temp_val < 120:
-                                    temps.append(temp_val)
-                
-                # If no package temps found, try instances
-                if not temps and 'summary' in temp_data and 'instances' in temp_data['summary']:
-                    for instance in temp_data['summary']['instances']:
-                        inst_id = instance.get('id', '').lower()
-                        if 'package' in inst_id or 'coretemp' in inst_id:
-                            if 'sts' in instance and 'avg' in instance['sts']:
-                                temp_val = instance['sts']['avg']
-                                if isinstance(temp_val, (int, float)) and 20 < temp_val < 120:
-                                    temps.append(temp_val)
-                
-                logger.warning(f"Temperature data found: {len(temps)} readings")
-            else:
-                logger.warning(f"Temperature API v2 returned status {temp_response.status_code}")
-
-            if temps:
-                avg_temp = round(sum(temps) / len(temps), 1)
-                max_temp = round(max(temps), 1)
-                metrics['temperature'] = {
-                    'avg_celsius': avg_temp,
-                    'max_celsius': max_temp,
-                    'node_count': len(temps),
-                    'description': 'CPU Temperature'
-                }
-                logger.warning(f"Temperature metrics: avg={avg_temp}, max={max_temp}, readings={len(temps)}")
-            else:
-                logger.warning("No CPU temperature data found from context")
-        except Exception as e:
-            logger.warning(f"Failed to fetch temperature metrics: {e}")
-            metrics['temperature'] = None
-
-        # Get deployment status from k8s_state collector
-        try:
-            # Try multiple context names for deployments
-            deployment_contexts = [
-                'k8s_state.deployment_replicas',
-                'k8s_state.deployment_replicas_ready',
-                'k8s_state.deployment_condition'
-            ]
-            
-            deploy_data = None
-            for context in deployment_contexts:
-                deployments_response = requests.get(
-                    f"{netdata_url}/api/v2/data",
-                    params={
-                        'contexts': context,
-                        'points': 1
-                    },
-                    timeout=timeout
-                )
-                
-                if deployments_response.status_code == 200:
-                    deploy_data = deployments_response.json()
-                    logger.warning(f"Deployments API response for {context}: {deploy_data}")
-                    
-                    # Check if we got actual data
-                    if 'summary' in deploy_data:
-                        if 'instances' in deploy_data['summary'] and len(deploy_data['summary']['instances']) > 0:
-                            logger.warning(f"Found deployment data using context: {context}")
-                            break
-                        elif 'dimensions' in deploy_data['summary'] and len(deploy_data['summary']['dimensions']) > 0:
-                            logger.warning(f"Found deployment dimensions using context: {context}")
-                            break
-                    deploy_data = None  # Reset if no useful data
-
-            if deploy_data:
-                total_deployments = 0
-                healthy_deployments = 0
-
-                # Try to count from instances
-                if 'summary' in deploy_data and 'instances' in deploy_data['summary']:
-                    for instance in deploy_data['summary']['instances']:
-                        total_deployments += 1
-                        if 'sts' in instance and 'avg' in instance['sts']:
-                            if instance['sts']['avg'] > 0:
-                                healthy_deployments += 1
-                
-                # If no instances, try dimensions (each dimension might be a deployment)
-                if total_deployments == 0 and 'summary' in deploy_data and 'dimensions' in deploy_data['summary']:
-                    for dim in deploy_data['summary']['dimensions']:
-                        total_deployments += 1
-                        if 'sts' in dim and 'avg' in dim['sts']:
-                            if dim['sts']['avg'] > 0:
-                                healthy_deployments += 1
-
-                if total_deployments > 0:
-                    metrics['deployments'] = {
-                        'total': total_deployments,
-                        'healthy': healthy_deployments,
-                        'description': 'Deployments'
-                    }
-                    logger.warning(f"Deployments metrics: {healthy_deployments}/{total_deployments} healthy")
-                else:
-                    logger.warning("No deployment instances found in response")
-            else:
-                logger.warning("No deployment data found from any context")
-        except Exception as e:
-            logger.warning(f"Failed to fetch deployment metrics: {e}")
-            metrics['deployments'] = None
-
-        cache.set('netdata_metrics', metrics, 1)
-
-        return JsonResponse(metrics)
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to connect to Netdata: {e}")
-        # Try to return cached data even if expired
-        cached_metrics = cache.get('netdata_metrics_backup')
-        if cached_metrics:
-            cached_metrics['status'] = 'cached'
-            return JsonResponse(cached_metrics)
-
-        return JsonResponse({
-            'cpu': None,
-            'memory': None,
-            'pods': None,
-            'network': None,
-            'disk_io': None,
-            'uptime': None,
-            'temperature': None,
-            'deployments': None,
-            'status': 'unavailable',
-            'error': 'Unable to connect to monitoring service'
-        })
-    except Exception as e:
-        logger.error(f"Unexpected error fetching metrics: {e}")
-        return JsonResponse({
-            'cpu': None,
-            'memory': None,
-            'pods': None,
-            'network': None,
-            'disk_io': None,
-            'uptime': None,
-            'temperature': None,
-            'deployments': None,
-            'status': 'error',
-            'error': 'Internal error'
-        })
+    cache.set('cluster_metrics', metrics, CLUSTER_METRICS_TTL)
+    if not errors:
+        # Only a complete snapshot is worth falling back to
+        cache.set('cluster_metrics_backup', metrics, CLUSTER_METRICS_BACKUP_TTL)
+    return JsonResponse(metrics)
 
 
 def get_cardinal_direction(degrees):
