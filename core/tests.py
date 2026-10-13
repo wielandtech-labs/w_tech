@@ -82,6 +82,8 @@ class ClusterMetricsViewTests(TestCase):
         'availability_percent': 99.97749,
         'probed_services': 18,
         'nodes': 4,
+        'nodes_ready': 4,
+        'uptime_seconds': 205430,
         'pods_running': 145,
         'deployments_total': 82,
         'deployments_healthy': 81,
@@ -123,6 +125,42 @@ class ClusterMetricsViewTests(TestCase):
         self.assertEqual(data['nodes']['count'], 4)
         self.assertEqual(data['traffic']['requests_per_second'], 1.9)
         self.assertEqual(data['database'], {'size_mb': 370, 'databases': 21, 'description': 'Postgres Data'})
+
+    def test_w_portfolio_contract(self):
+        # wielandtech.com (wielandtech-labs/w_portfolio) proxies this endpoint
+        # and reads these paths in src/components/LiveStats.astro.
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get()):
+            data = self.client.get(self.url).json()
+
+        paths = [
+            'pods.count', 'deployments.healthy', 'deployments.total',
+            'availability.percentage', 'availability.services',
+            'nodes.count', 'nodes.ready', 'traffic.requests_per_second',
+            'database.size_mb', 'database.databases',
+            # legacy, until w_portfolio's new LiveStats is in prod
+            'cpu.percentage', 'cpu.total_cores', 'memory.percentage',
+            'memory.used_gb', 'memory.total_gb', 'uptime.formatted',
+            'nodes_count', 'reachable_nodes',
+        ]
+        for path in paths:
+            node = data
+            for part in path.split('.'):
+                self.assertIn(part, node, path)
+                node = node[part]
+            self.assertIsInstance(node, (int, float, str), path)
+
+        self.assertEqual(data['nodes'], {'count': 4, 'ready': 4, 'description': 'Nodes'})
+        self.assertEqual((data['nodes_count'], data['reachable_nodes']), (4, 4))
+        self.assertEqual(data['uptime']['formatted'], '2d 9h')
+
+    def test_failed_ready_query_omits_legacy_node_fields(self):
+        overrides = {'nodes_ready': requests.exceptions.HTTPError('500')}
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get(overrides)):
+            data = self.client.get(self.url).json()
+
+        self.assertIsNone(data['nodes']['ready'])
+        self.assertNotIn('nodes_count', data)
+        self.assertNotIn('reachable_nodes', data)
 
     def test_failed_query_only_nulls_its_card(self):
         overrides = {'requests_per_second': requests.exceptions.HTTPError('500')}

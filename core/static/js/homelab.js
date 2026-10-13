@@ -52,7 +52,9 @@ function fetchMetrics() {
             }
 
             if (data.nodes) {
-                html += metricCard(data.nodes.description, data.nodes.count, 'bare-metal + GPU');
+                const n = data.nodes;
+                html += metricCard(n.description, n.count,
+                    n.ready !== null && n.ready !== undefined ? `${n.ready} ready` : 'bare-metal + GPU');
             }
 
             // Row 2: capacity and traffic

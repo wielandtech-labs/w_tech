@@ -149,6 +149,9 @@ CLUSTER_QUERIES = {
     'availability_percent': 'avg(avg_over_time((max by (target) (probe_success))[30d:5m])) * 100',
     'probed_services': 'count(count by (target) (probe_success))',
     'nodes': 'count(kube_node_info)',
+    'nodes_ready': 'sum(kube_node_status_condition{condition="Ready",status="true"})',
+    # Most recently rebooted node (node-exporter runs on the bare-metal nodes)
+    'uptime_seconds': 'min(time() - node_boot_time_seconds)',
     'pods_running': 'sum(kube_pod_status_phase{phase="Running"})',
     'deployments_total': 'count(kube_deployment_spec_replicas)',
     'deployments_healthy': 'count(kube_deployment_status_replicas_available >= kube_deployment_spec_replicas)',
@@ -157,6 +160,17 @@ CLUSTER_QUERIES = {
     'db_size_bytes': 'sum(max by (datname) (cnpg_pg_database_size_bytes))',
     'db_count': 'count(max by (datname) (cnpg_pg_database_size_bytes))',
 }
+
+
+def _format_uptime(seconds):
+    days = int(seconds // 86400)
+    hours = int((seconds % 86400) // 3600)
+    minutes = int((seconds % 3600) // 60)
+    if days > 0:
+        return f"{days}d {hours}h"
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
 
 
 def _prom(query):
@@ -266,6 +280,7 @@ def _cluster_metrics_response():
     if present('nodes'):
         metrics['nodes'] = {
             'count': int(values['nodes']),
+            'ready': None if 'nodes_ready' in errors else int(values['nodes_ready'] or 0),
             'description': 'Nodes',
         }
     if present('cpu_percent', 'cpu_cores'):
@@ -291,6 +306,20 @@ def _cluster_metrics_response():
             'size_mb': round(values['db_size_bytes'] / 10**6),
             'databases': int(values['db_count']),
             'description': 'Postgres Data',
+        }
+
+    # Legacy fields read by w_portfolio's LiveStats (wielandtech.com) until it
+    # moves to the cards above; drop them once it no longer does.
+    if metrics['nodes'] and metrics['nodes']['ready'] is not None:
+        metrics['nodes_count'] = metrics['nodes']['count']
+        metrics['reachable_nodes'] = metrics['nodes']['ready']
+    metrics['uptime'] = None
+    if present('uptime_seconds'):
+        metrics['uptime'] = {
+            'seconds': int(values['uptime_seconds']),
+            'formatted': _format_uptime(values['uptime_seconds']),
+            'days': int(values['uptime_seconds'] // 86400),
+            'description': 'Uptime',
         }
 
     cache.set('cluster_metrics', metrics, CLUSTER_METRICS_TTL)
