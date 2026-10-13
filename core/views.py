@@ -50,7 +50,7 @@ Message:
 {message}
 
 ---
-This message was sent from the contact form on wielandtech.com
+This message was sent from the contact form on {request.get_host()}
             """.strip()
             
             try:

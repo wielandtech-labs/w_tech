@@ -187,6 +187,6 @@ This application is deployed using Kubernetes in a homelab environment. The depl
 
 ## 📫 Contact
 
-- Website: [wielandtech.com](https://wielandtech.com)
+- Website: [raphaelwieland.com](https://raphaelwieland.com)
 - Email: raphael@wielandtech.com
 - GitHub: [@wielandtech](https://github.com/wielandtech)

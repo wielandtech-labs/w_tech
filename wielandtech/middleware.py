@@ -13,8 +13,6 @@ INTERNAL_ADMIN_HOSTS = [
 
 # Public domains that should receive the Content-Security-Policy header.
 CSP_HOSTS = [
-    'wielandtech.com',
-    'www.wielandtech.com',
     'raphaelwieland.com',
     'www.raphaelwieland.com',
 ]

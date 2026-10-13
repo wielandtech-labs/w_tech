@@ -39,7 +39,7 @@ class InternalAdminCookieMiddlewareTests(SimpleTestCase):
 
     def test_keeps_secure_flag_for_public_host(self):
         for secure in (False, True):
-            response = self._run('wielandtech.com', secure=secure)
+            response = self._run('raphaelwieland.com', secure=secure)
             self.assert_secure_flags(response, expected=True)
 
     def test_response_without_cookies_passes_through(self):
@@ -57,13 +57,20 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         return middleware(request)
 
     def test_sets_csp_on_public_hosts(self):
-        for host in ('wielandtech.com', 'raphaelwieland.com',
-                     'www.raphaelwieland.com'):
+        for host in ('raphaelwieland.com', 'www.raphaelwieland.com'):
             with self.subTest(host=host):
                 self.assertIn('Content-Security-Policy', self._run(host))
 
     def test_ignores_port_when_matching_host(self):
         self.assertIn('Content-Security-Policy', self._run('raphaelwieland.com:443'))
+
+    def test_retired_portfolio_host_is_not_served(self):
+        # wielandtech.com is served by w_portfolio now, not by this app.
+        from wielandtech.middleware import CSP_HOSTS
+        for host in ('wielandtech.com', 'www.wielandtech.com'):
+            with self.subTest(host=host):
+                self.assertNotIn(host, CSP_HOSTS)
+                self.assertNotIn(host, settings.ALLOWED_HOSTS)
 
     def test_omits_csp_on_internal_host(self):
         self.assertNotIn('Content-Security-Policy', self._run('wielandtech.k8s.local'))
@@ -73,3 +80,4 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(response['X-Frame-Options'], 'DENY')
         self.assertEqual(response['Referrer-Policy'], 'strict-origin-when-cross-origin')
+
