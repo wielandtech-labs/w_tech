@@ -34,13 +34,8 @@
     <div class="wrapper">
         {% if request.path == '/' %}
             <div class="splash parallax" id="homepage">
-                {% if request.is_portfolio %}
-                <a href="/#projects" class="header">WIELANDTECH</a>
-                <a href="/#projects" class="scroll-cta">
-                {% else %}
                 <a href="/#about" class="header">RAPHAEL WIELAND</a>
                 <a href="/#about" class="scroll-cta">
-                {% endif %}
                     <div class="mouse">
                         <div class="scroller"></div>
                     </div>

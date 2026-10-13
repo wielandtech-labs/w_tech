@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 def homepage(request):
-    if getattr(request, 'is_portfolio', False):
-        return render(request, 'core/portfolio.html')
     return render(request, 'core/index.html')
 
 
