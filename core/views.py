@@ -139,6 +139,8 @@ def maintenance(request):
 
 CLUSTER_METRICS_TTL = 30  # seconds; homelab.js polls on the same interval
 CLUSTER_METRICS_BACKUP_TTL = 60 * 60  # served when Prometheus is unreachable
+# Availability SLO, matching the w_homelab Grafana SLO dashboards
+AVAILABILITY_SLO = 99.9
 
 CLUSTER_QUERIES = {
     'cpu_percent': '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
@@ -171,6 +173,18 @@ def _format_uptime(seconds):
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _error_budget(availability):
+    """Share of the 30-day error budget left (negative once overspent) and its state."""
+    remaining = (1 - (100 - availability) / (100 - AVAILABILITY_SLO)) * 100
+    if remaining >= 50:
+        state = 'healthy'
+    elif remaining >= 0:
+        state = 'at_risk'
+    else:
+        state = 'breached'
+    return round(remaining), state
 
 
 def _prom(query):
@@ -260,11 +274,15 @@ def _cluster_metrics_response():
     }
 
     if present('availability_percent', 'probed_services'):
+        budget_remaining, budget_state = _error_budget(values['availability_percent'])
         metrics['availability'] = {
             # Never round an imperfect month up to a perfect 100.00
             'percentage': (100.0 if values['availability_percent'] >= 100
                            else min(round(values['availability_percent'], 2), 99.99)),
             'services': int(values['probed_services']),
+            'slo': AVAILABILITY_SLO,
+            'budget_remaining_percent': budget_remaining,
+            'state': budget_state,
             'description': 'Availability (30d)',
         }
     if present('deployments_total') and 'deployments_healthy' not in errors:

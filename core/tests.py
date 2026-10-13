@@ -134,7 +134,8 @@ class ClusterMetricsViewTests(TestCase):
 
         paths = [
             'pods.count', 'deployments.healthy', 'deployments.total',
-            'availability.percentage', 'availability.services',
+            'availability.percentage', 'availability.services', 'availability.slo',
+            'availability.budget_remaining_percent', 'availability.state',
             'nodes.count', 'nodes.ready', 'traffic.requests_per_second',
             'database.size_mb', 'database.databases',
             # legacy, until w_portfolio's new LiveStats is in prod
@@ -177,6 +178,15 @@ class ClusterMetricsViewTests(TestCase):
             with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_percent': raw})):
                 data = self.client.get(self.url).json()
             self.assertEqual(data['availability']['percentage'], shown)
+
+    def test_error_budget_state(self):
+        # SLO 99.9%: the 30-day budget is 0.1 points of availability
+        for raw, remaining, state in [(99.98, 80, 'healthy'), (99.94, 40, 'at_risk'),
+                                      (99.85, -50, 'breached'), (100.0, 100, 'healthy')]:
+            cache.clear()
+            with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_percent': raw})):
+                a = self.client.get(self.url).json()['availability']
+            self.assertEqual((a['budget_remaining_percent'], a['state'], a['slo']), (remaining, state, 99.9), raw)
 
     def test_empty_healthy_count_means_zero(self):
         with mock.patch('core.views.requests.get', side_effect=self._fake_get({'deployments_healthy': None})):

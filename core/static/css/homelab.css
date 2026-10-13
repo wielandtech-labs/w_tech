@@ -352,6 +352,10 @@
     transition: width 0.6s ease, background 0.3s ease;
 }
 
+.metric-bar-fill.ok {
+    background: linear-gradient(90deg, #2E7D32, #4CAF50);
+}
+
 .metric-bar-fill.warning {
     background: linear-gradient(90deg, var(--highlight), #FF9800);
 }
