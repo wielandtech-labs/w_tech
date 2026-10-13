@@ -9,7 +9,7 @@ This document outlines the security measures implemented for the WielandTech Dja
 **Admin panel (`/admin/`) is restricted to internal network only.**
 
 - ✅ **Accessible via**: `http://wielandtech.k8s.local/admin/`
-- ❌ **Blocked on**: `https://wielandtech.com/admin/`, `https://www.wielandtech.com/admin/`
+- ❌ **Blocked on**: `https://raphaelwieland.com/admin/`, `https://www.raphaelwieland.com/admin/`
 
 **Implementation**: Custom middleware `RestrictAdminMiddleware` checks the request host and blocks public admin access.
 
@@ -76,7 +76,7 @@ curl -I http://wielandtech.k8s.local/admin/
 **From Public Internet (should be blocked):**
 ```bash
 # From anywhere
-curl -I https://wielandtech.com/admin/
+curl -I https://raphaelwieland.com/admin/
 # Expected: 403 Forbidden
 ```
 
@@ -84,16 +84,16 @@ curl -I https://wielandtech.com/admin/
 
 **Public pages should work normally:**
 ```bash
-curl -I https://wielandtech.com/
-curl -I https://wielandtech.com/blog/
-curl -I https://wielandtech.com/account/login/
+curl -I https://raphaelwieland.com/
+curl -I https://raphaelwieland.com/blog/
+curl -I https://raphaelwieland.com/account/login/
 # Expected: 200 OK
 ```
 
 ### Test Security Headers
 
 ```bash
-curl -I https://wielandtech.com/ | grep -E 'Strict-Transport|X-Frame|X-Content|CSP'
+curl -I https://raphaelwieland.com/ | grep -E 'Strict-Transport|X-Frame|X-Content|CSP'
 ```
 
 Expected headers:
@@ -207,7 +207,7 @@ kubectl logs -n website <pod-name>
 4. **Test restrictions**:
 ```bash
 # Should be blocked
-curl -I https://wielandtech.com/admin/
+curl -I https://raphaelwieland.com/admin/
 
 # Should work
 curl -I http://wielandtech.k8s.local/admin/

@@ -14,13 +14,6 @@ class HomepageViewTests(TestCase):
         response = self.client.get(reverse('core:core_home'))
         self.assertTemplateUsed(response, 'core/index.html')
 
-    def test_portfolio_host_serves_portfolio(self):
-        response = self.client.get('/', HTTP_HOST='wielandtech.com')
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'core/portfolio.html')
-        self.assertContains(response, 'https://raphaelwieland.com/')
-        self.assertNotContains(response, 'id="about"')
-
     def test_personal_host_links_to_portfolio(self):
         response = self.client.get('/', HTTP_HOST='raphaelwieland.com')
         self.assertTemplateUsed(response, 'core/index.html')

@@ -1,7 +1,7 @@
 """
 Custom middleware for security and access control.
 """
-from django.http import HttpResponseForbidden, HttpResponsePermanentRedirect
+from django.http import HttpResponseForbidden
 from django.conf import settings
 
 # Hosts allowed to reach the Django admin (LAN-only access paths).
@@ -13,23 +13,9 @@ INTERNAL_ADMIN_HOSTS = [
 
 # Public domains that should receive the Content-Security-Policy header.
 CSP_HOSTS = [
-    'wielandtech.com',
-    'www.wielandtech.com',
     'raphaelwieland.com',
     'www.raphaelwieland.com',
 ]
-
-# wielandtech.com is the professional portfolio; raphaelwieland.com is the
-# canonical home of everything else (blog, photography, accounts).
-PORTFOLIO_HOSTS = [
-    'wielandtech.com',
-    'www.wielandtech.com',
-]
-PERSONAL_SITE_URL = 'https://raphaelwieland.com'
-
-# Paths the portfolio serves itself. /api/ backs the homelab page and the
-# footer weather widget; a cross-origin redirect would break those fetches.
-PORTFOLIO_PATHS = ('/homelab/', '/contact/', '/api/', '/static/', '/media/')
 
 
 class AllowMetricsEndpointMiddleware:
@@ -51,26 +37,6 @@ class AllowMetricsEndpointMiddleware:
         
         response = self.get_response(request)
         return response
-
-
-class PortfolioHostMiddleware:
-    """
-    Flag portfolio-host requests (request.is_portfolio) and 308 every path
-    the portfolio doesn't serve to the same path on the personal site, so
-    old wielandtech.com blog/image/account links keep working.
-    """
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        host = request.get_host().split(':')[0].lower()
-        request.is_portfolio = host in PORTFOLIO_HOSTS
-        if request.is_portfolio and request.path != '/' and not request.path.startswith(PORTFOLIO_PATHS):
-            response = HttpResponsePermanentRedirect(PERSONAL_SITE_URL + request.get_full_path())
-            # 308, not 301: a stale form POST must stay a POST after the hop.
-            response.status_code = 308
-            return response
-        return self.get_response(request)
 
 
 class RestrictAdminMiddleware:

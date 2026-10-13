@@ -17,8 +17,6 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key-dev")
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
-    "wielandtech.com",
-    "www.wielandtech.com",
     "raphaelwieland.com",
     "www.raphaelwieland.com",
     "dev.wielandtech.com",
@@ -34,8 +32,6 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://www.wielandtech.com",
-    "https://wielandtech.com",
     "https://raphaelwieland.com",
     "https://www.raphaelwieland.com",
     "https://wielandtech.k8s.local",
@@ -84,7 +80,6 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'wielandtech.middleware.PortfolioHostMiddleware',  # wielandtech.com: portfolio only, rest 301s to raphaelwieland.com
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',

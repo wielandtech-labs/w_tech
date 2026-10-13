@@ -7,7 +7,6 @@ from django.test import RequestFactory, SimpleTestCase
 
 from wielandtech.middleware import (
     InternalAdminCookieMiddleware,
-    PortfolioHostMiddleware,
     SecurityHeadersMiddleware,
 )
 
@@ -40,7 +39,7 @@ class InternalAdminCookieMiddlewareTests(SimpleTestCase):
 
     def test_keeps_secure_flag_for_public_host(self):
         for secure in (False, True):
-            response = self._run('wielandtech.com', secure=secure)
+            response = self._run('raphaelwieland.com', secure=secure)
             self.assert_secure_flags(response, expected=True)
 
     def test_response_without_cookies_passes_through(self):
@@ -58,13 +57,20 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         return middleware(request)
 
     def test_sets_csp_on_public_hosts(self):
-        for host in ('wielandtech.com', 'raphaelwieland.com',
-                     'www.raphaelwieland.com'):
+        for host in ('raphaelwieland.com', 'www.raphaelwieland.com'):
             with self.subTest(host=host):
                 self.assertIn('Content-Security-Policy', self._run(host))
 
     def test_ignores_port_when_matching_host(self):
         self.assertIn('Content-Security-Policy', self._run('raphaelwieland.com:443'))
+
+    def test_retired_portfolio_host_is_not_served(self):
+        # wielandtech.com is served by w_portfolio now, not by this app.
+        from wielandtech.middleware import CSP_HOSTS
+        for host in ('wielandtech.com', 'www.wielandtech.com'):
+            with self.subTest(host=host):
+                self.assertNotIn(host, CSP_HOSTS)
+                self.assertNotIn(host, settings.ALLOWED_HOSTS)
 
     def test_omits_csp_on_internal_host(self):
         self.assertNotIn('Content-Security-Policy', self._run('wielandtech.k8s.local'))
@@ -75,34 +81,3 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         self.assertEqual(response['X-Frame-Options'], 'DENY')
         self.assertEqual(response['Referrer-Policy'], 'strict-origin-when-cross-origin')
 
-
-class PortfolioHostMiddlewareTests(SimpleTestCase):
-    def _run(self, host, path):
-        middleware = PortfolioHostMiddleware(lambda request: HttpResponse('served'))
-        request = RequestFactory().get(path, HTTP_HOST=host)
-        return request, middleware(request)
-
-    def test_redirects_personal_paths_to_raphaelwieland(self):
-        for host in ('wielandtech.com', 'www.wielandtech.com:443', 'WielandTech.com'):
-            with self.subTest(host=host):
-                _, response = self._run(host, '/blog/2026/6/24/post/?page=2')
-                self.assertEqual(response.status_code, 308)
-                self.assertEqual(
-                    response['Location'],
-                    'https://raphaelwieland.com/blog/2026/6/24/post/?page=2',
-                )
-
-    def test_serves_portfolio_paths(self):
-        for path in ('/', '/homelab/', '/contact/', '/api/weather/', '/static/css/main.css'):
-            with self.subTest(path=path):
-                request, response = self._run('wielandtech.com', path)
-                self.assertEqual(response.content, b'served')
-                self.assertTrue(request.is_portfolio)
-
-    def test_leaves_other_hosts_alone(self):
-        for host in ('raphaelwieland.com', 'pr-41.review.wielandtech.com',
-                     'dev.wielandtech.com', 'wielandtech.k8s.local'):
-            with self.subTest(host=host):
-                request, response = self._run(host, '/blog/')
-                self.assertEqual(response.content, b'served')
-                self.assertFalse(request.is_portfolio)
