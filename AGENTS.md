@@ -11,7 +11,7 @@ App development setup is in the README — this file covers how changes ship.
 
 | Event | Tag | Deploys to |
 |---|---|---|
-| Push to `main` | `YYYYMMDD-HHMMSS-<shortsha>` | **Production** — https://wielandtech.com (via Flux image automation + `flux/image-updates/prod` fast-forward) |
+| Push to `main` | `YYYYMMDD-HHMMSS-<shortsha>` | **Production** — https://raphaelwieland.com + https://wielandtech.com (via Flux image automation + `flux/image-updates/prod` fast-forward) |
 | Push to any other branch | `dev-YYYYMMDD-HHMMSS-<shortsha>` | **Dev** — https://dev.wielandtech.com (auto-tracks newest dev tag) |
 | Same-repo pull request | `pr-<number>-<shortsha>` | **Review app** — https://pr-<number>.review.wielandtech.com |
 
@@ -55,5 +55,11 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   Content-Security-Policy header — miss it and the new host serves with no
   CSP. Merge the app change to `main` *before* the w_homelab ingress PR, or
   the new host returns `400 DisallowedHost` until the deploy lands.
+- **Two production hosts, one app.** raphaelwieland.com is the canonical
+  personal site (blog, photography, accounts). wielandtech.com is the
+  portfolio: `PortfolioHostMiddleware` (`wielandtech/middleware.py`) serves
+  `/`, `/homelab/`, `/contact/` and `/api/` there and 308s every other path to
+  raphaelwieland.com. dev/QA/review hosts always run in personal mode. The
+  `Site` record (sitemap, password-reset links) points at raphaelwieland.com.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.

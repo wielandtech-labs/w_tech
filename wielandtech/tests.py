@@ -7,6 +7,7 @@ from django.test import RequestFactory, SimpleTestCase
 
 from wielandtech.middleware import (
     InternalAdminCookieMiddleware,
+    PortfolioHostMiddleware,
     SecurityHeadersMiddleware,
 )
 
@@ -73,3 +74,35 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(response['X-Frame-Options'], 'DENY')
         self.assertEqual(response['Referrer-Policy'], 'strict-origin-when-cross-origin')
+
+
+class PortfolioHostMiddlewareTests(SimpleTestCase):
+    def _run(self, host, path):
+        middleware = PortfolioHostMiddleware(lambda request: HttpResponse('served'))
+        request = RequestFactory().get(path, HTTP_HOST=host)
+        return request, middleware(request)
+
+    def test_redirects_personal_paths_to_raphaelwieland(self):
+        for host in ('wielandtech.com', 'www.wielandtech.com:443', 'WielandTech.com'):
+            with self.subTest(host=host):
+                _, response = self._run(host, '/blog/2026/6/24/post/?page=2')
+                self.assertEqual(response.status_code, 308)
+                self.assertEqual(
+                    response['Location'],
+                    'https://raphaelwieland.com/blog/2026/6/24/post/?page=2',
+                )
+
+    def test_serves_portfolio_paths(self):
+        for path in ('/', '/homelab/', '/contact/', '/api/weather/', '/static/css/main.css'):
+            with self.subTest(path=path):
+                request, response = self._run('wielandtech.com', path)
+                self.assertEqual(response.content, b'served')
+                self.assertTrue(request.is_portfolio)
+
+    def test_leaves_other_hosts_alone(self):
+        for host in ('raphaelwieland.com', 'pr-41.review.wielandtech.com',
+                     'dev.wielandtech.com', 'wielandtech.k8s.local'):
+            with self.subTest(host=host):
+                request, response = self._run(host, '/blog/')
+                self.assertEqual(response.content, b'served')
+                self.assertFalse(request.is_portfolio)
