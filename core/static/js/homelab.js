@@ -34,14 +34,12 @@ function fetchMetrics() {
 
             // Row 1: reliability and fleet
             if (data.availability) {
-                // Colored by the 30-day error budget against the SLO, not the raw %
+                // Colored by which SLO tier (99.9% / 99%) the month meets
                 const a = data.availability;
-                const cls = {healthy: 'ok', at_risk: 'warning', breached: 'critical'}[a.state] || '';
-                const budget = a.budget_remaining_percent >= 0
-                    ? `${a.budget_remaining_percent}% error budget left` : 'error budget spent';
-                html += metricCard(a.description, `${a.percentage}%`,
-                    `${a.services} services · SLO ${a.slo}% · ${budget}`,
-                    {percent: Math.max(a.budget_remaining_percent, 0), cls: cls});
+                const slo = a.slo_met === null ? 'below 99% SLO' : `meets ${a.slo_met}% SLO`;
+                html += metricCard(a.description,
+                    `<span class="slo-${a.state}">${a.percentage}%</span>`,
+                    `${a.services} services · ${slo}`);
             }
 
             if (data.deployments) {

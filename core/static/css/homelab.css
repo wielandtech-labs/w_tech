@@ -352,9 +352,10 @@
     transition: width 0.6s ease, background 0.3s ease;
 }
 
-.metric-bar-fill.ok {
-    background: linear-gradient(90deg, #2E7D32, #4CAF50);
-}
+/* Availability value, by SLO tier met */
+.slo-healthy { color: #4CAF50; }
+.slo-at_risk { color: #FFB300; }
+.slo-breached { color: #EF5350; }
 
 .metric-bar-fill.warning {
     background: linear-gradient(90deg, var(--highlight), #FF9800);
