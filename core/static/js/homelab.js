@@ -34,10 +34,12 @@ function fetchMetrics() {
 
             // Row 1: reliability and fleet
             if (data.availability) {
+                // Colored by which SLO tier (99.9% / 99%) the month meets
                 const a = data.availability;
-                const cls = a.percentage < 99 ? 'critical' : (a.percentage < 99.9 ? 'warning' : '');
-                html += metricCard(a.description, `${a.percentage}%`,
-                    `across ${a.services} monitored services`, {percent: a.percentage, cls: cls});
+                const slo = a.slo_met === null ? 'below 99% SLO' : `meets ${a.slo_met}% SLO`;
+                html += metricCard(a.description,
+                    `<span class="slo-${a.state}">${a.percentage}%</span>`,
+                    `${a.services} services · ${slo}`);
             }
 
             if (data.deployments) {

@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.core.mail import send_mail
 from django.contrib import messages
 from django.utils.html import format_html
+import math
 import requests
 import logging
 
@@ -139,6 +140,8 @@ def maintenance(request):
 
 CLUSTER_METRICS_TTL = 30  # seconds; homelab.js polls on the same interval
 CLUSTER_METRICS_BACKUP_TTL = 60 * 60  # served when Prometheus is unreachable
+# Availability SLO tiers, highest first; 99.9 matches the w_homelab Grafana SLO dashboards
+AVAILABILITY_SLOS = (99.9, 99.0)
 
 CLUSTER_QUERIES = {
     'cpu_percent': '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
@@ -171,6 +174,18 @@ def _format_uptime(seconds):
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _availability(raw):
+    """Availability floored to 2 decimals, the highest SLO tier it meets, and a state.
+
+    Flooring (with a float-error epsilon) means an imperfect month never reads
+    as a higher tier or a perfect 100.00, and the state matches what's shown.
+    """
+    percentage = math.floor(raw * 100 + 1e-6) / 100
+    slo_met = next((slo for slo in AVAILABILITY_SLOS if percentage >= slo), None)
+    state = {AVAILABILITY_SLOS[0]: 'healthy', AVAILABILITY_SLOS[1]: 'at_risk'}.get(slo_met, 'breached')
+    return percentage, slo_met, state
 
 
 def _prom(query):
@@ -260,11 +275,12 @@ def _cluster_metrics_response():
     }
 
     if present('availability_percent', 'probed_services'):
+        percentage, slo_met, state = _availability(values['availability_percent'])
         metrics['availability'] = {
-            # Never round an imperfect month up to a perfect 100.00
-            'percentage': (100.0 if values['availability_percent'] >= 100
-                           else min(round(values['availability_percent'], 2), 99.99)),
+            'percentage': percentage,
             'services': int(values['probed_services']),
+            'slo_met': slo_met,
+            'state': state,
             'description': 'Availability (30d)',
         }
     if present('deployments_total') and 'deployments_healthy' not in errors:
