@@ -143,9 +143,10 @@ CLUSTER_METRICS_TTL = 30  # seconds; homelab.js polls on the same interval
 CLUSTER_METRICS_BACKUP_TTL = 60 * 60  # served when Prometheus is unreachable
 # Availability SLO tiers, highest first; 99.9 matches the w_homelab Grafana SLO dashboards
 AVAILABILITY_SLOS = (99.9, 99.0)
-# Traefik's default request-duration buckets (seconds). The histogram can't
-# resolve within a bucket, so p99 is reported as the bucket bound it falls under.
-TRAEFIK_BUCKETS = (0.1, 0.3, 1.2, 5.0)
+# Top finite Traefik request-duration bucket (seconds); w_homelab sets the
+# buckets to 0.025,0.05,0.1,0.25,0.5,1,2.5,5, fine enough that p99 is reported
+# as histogram_quantile's interpolated value.
+TRAEFIK_TOP_BUCKET = 5.0
 # The availability card's 30-day window as 30 rolling 24h values, oldest
 # first, for w_portfolio's SLO graph. Same expression as availability_percent.
 AVAILABILITY_DAILY_QUERY = 'avg(avg_over_time((max by (target) (probe_success))[1d:5m])) * 100'
@@ -362,14 +363,11 @@ def _cluster_metrics_response():
         }
     if present('latency_p99_seconds'):
         # NaN when there was no traffic. In the +Inf bucket Prometheus returns
-        # the last finite bound, so a p99 there is unbounded, not <= it.
+        # the last finite bound, so a p99 there is unknown, not that bound.
         p99 = values['latency_p99_seconds']
-        bound = next((b for b in TRAEFIK_BUCKETS if p99 <= b), None)
-        if p99 >= TRAEFIK_BUCKETS[-1]:
-            bound = None
-        if bound is not None:
+        if p99 < TRAEFIK_TOP_BUCKET:
             metrics['latency'] = {
-                'p99_ms': round(bound * 1000),
+                'p99_ms': round(p99 * 1000),
                 'description': 'Ingress Latency (p99)',
             }
     if present('error_percent'):

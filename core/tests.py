@@ -218,9 +218,9 @@ class ClusterMetricsViewTests(TestCase):
                 a = self.client.get(self.url).json()['availability']
             self.assertEqual((a['percentage'], a['slo_met'], a['state']), (shown, slo_met, state), raw)
 
-    def test_latency_is_ceiled_to_traefik_bucket(self):
-        # Traefik's default buckets can't resolve below their bounds
-        cases = [(0.0996, 100), (0.1, 100), (0.25, 300), (1.0, 1200), (4.9, 5000), (5.0, None),
+    def test_latency_is_interpolated_p99(self):
+        # At or past the top bucket the p99 is unknown; NaN means no traffic
+        cases = [(0.0996, 100), (0.4083, 408), (1.0, 1000), (4.9, 4900), (5.0, None),
                  (7.5, None), (float('nan'), None)]
         for raw, p99_ms in cases:
             cache.clear()

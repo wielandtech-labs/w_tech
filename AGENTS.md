@@ -64,8 +64,9 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   `ClusterMetricsViewTests.test_w_portfolio_contract` pins them. Remove a
   field only after w_portfolio has stopped reading it in prod. Top-level
   `errors` is the list of failed queries, so the 5xx card is `error_rate`.
-  `latency.p99_ms` is a Traefik bucket bound (`TRAEFIK_BUCKETS`), not an
-  interpolated value. The `Site` record (sitemap, password-reset links) points at
+  `latency.p99_ms` is `histogram_quantile`'s interpolated p99 over w_homelab's
+  Traefik buckets (0.025–5 s), null at or past the top one
+  (`TRAEFIK_TOP_BUCKET`). The `Site` record (sitemap, password-reset links) points at
   raphaelwieland.com.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.
