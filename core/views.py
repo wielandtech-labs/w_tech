@@ -151,9 +151,9 @@ TRAEFIK_TOP_BUCKET = 5.0
 # first, for w_portfolio's SLO graph. Same expression as availability_percent.
 AVAILABILITY_DAILY_QUERY = 'avg(avg_over_time((max by (target) (probe_success))[1d:5m])) * 100'
 AVAILABILITY_DAYS = 30
-# Traefik services left out of the public ingress traffic and p99: internal
-# tools (Grafana/Prometheus/Alertmanager in monitoring, Homepage) and ntfy,
-# whose long-lived streams would otherwise set the fleet's p99 at seconds.
+# Traefik services left out of the public ingress traffic, p99 and 5xx rate:
+# internal tools (Grafana/Prometheus/Alertmanager in monitoring, Homepage) and
+# ntfy, whose long-lived streams would otherwise set the fleet's p99 at seconds.
 INGRESS_EXCLUDE = 'service!~"(monitoring|ntfy|homepage)-.*"'
 
 CLUSTER_QUERIES = {
@@ -173,7 +173,8 @@ CLUSTER_QUERIES = {
     'deployments_healthy': 'count(kube_deployment_status_replicas_available >= kube_deployment_spec_replicas)',
     'requests_per_second': f'sum(rate(traefik_service_requests_total{{{INGRESS_EXCLUDE}}}[5m]))',
     'latency_p99_seconds': f'histogram_quantile(0.99, sum by (le) (rate(traefik_service_request_duration_seconds_bucket{{{INGRESS_EXCLUDE}}}[5m])))',
-    'error_percent': 'sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) / sum(rate(traefik_service_requests_total[5m])) * 100',
+    # No 5xx series at all is an empty vector, not 0; or vector(0) keeps the card
+    'error_percent': f'(sum(rate(traefik_service_requests_total{{code=~"5..", {INGRESS_EXCLUDE}}}[5m])) or vector(0)) / sum(rate(traefik_service_requests_total{{{INGRESS_EXCLUDE}}}[5m])) * 100',
     # CNPG exports the same database from every replica; dedupe by datname
     'db_size_bytes': 'sum(max by (datname) (cnpg_pg_database_size_bytes))',
     'db_count': 'count(max by (datname) (cnpg_pg_database_size_bytes))',

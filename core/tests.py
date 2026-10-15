@@ -230,7 +230,7 @@ class ClusterMetricsViewTests(TestCase):
 
     def test_public_ingress_excludes_internal_services(self):
         # Long-lived streams (ntfy, Grafana live) would set the public p99
-        for key in ('requests_per_second', 'latency_p99_seconds'):
+        for key in ('requests_per_second', 'latency_p99_seconds', 'error_percent'):
             self.assertIn('service!~"(monitoring|ntfy|homepage)-.*"', CLUSTER_QUERIES[key], key)
 
     def test_error_rate(self):
