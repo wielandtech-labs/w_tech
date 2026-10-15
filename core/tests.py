@@ -117,7 +117,7 @@ class ClusterMetricsViewTests(TestCase):
         self.assertEqual(data['memory']['used_gb'], 26.0)
         self.assertEqual(data['memory']['total_gb'], 46.3)
         self.assertEqual(data['memory']['percentage'], 56.2)
-        self.assertEqual(data['availability']['percentage'], 99.98)
+        self.assertEqual(data['availability']['percentage'], 99.97)  # floored
         self.assertEqual(data['availability']['services'], 18)
         self.assertEqual(data['deployments']['healthy'], 81)
         self.assertEqual(data['deployments']['total'], 82)
@@ -134,7 +134,8 @@ class ClusterMetricsViewTests(TestCase):
 
         paths = [
             'pods.count', 'deployments.healthy', 'deployments.total',
-            'availability.percentage', 'availability.services',
+            'availability.percentage', 'availability.services', 'availability.state',
+            'availability.slo_met',
             'nodes.count', 'nodes.ready', 'traffic.requests_per_second',
             'database.size_mb', 'database.databases',
             # legacy, until w_portfolio's new LiveStats is in prod
@@ -171,12 +172,22 @@ class ClusterMetricsViewTests(TestCase):
         self.assertEqual(data['errors'], ['requests_per_second'])
         self.assertIsNotNone(data['cpu'])
 
-    def test_imperfect_availability_never_rounds_to_100(self):
-        for raw, shown in [(99.996, 99.99), (100.0, 100.0)]:
+    def test_availability_slo_tiers(self):
+        # Floored, so the shown number and its tier always agree
+        cases = [
+            (100.0, 100.0, 99.9, 'healthy'),
+            (99.996, 99.99, 99.9, 'healthy'),
+            (99.9, 99.9, 99.9, 'healthy'),
+            (99.8996, 99.89, 99.0, 'at_risk'),
+            (99.0, 99.0, 99.0, 'at_risk'),
+            (98.999, 98.99, None, 'breached'),
+            (99.29, 99.29, 99.0, 'at_risk'),  # float-error case for naive flooring
+        ]
+        for raw, shown, slo_met, state in cases:
             cache.clear()
             with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_percent': raw})):
-                data = self.client.get(self.url).json()
-            self.assertEqual(data['availability']['percentage'], shown)
+                a = self.client.get(self.url).json()['availability']
+            self.assertEqual((a['percentage'], a['slo_met'], a['state']), (shown, slo_met, state), raw)
 
     def test_empty_healthy_count_means_zero(self):
         with mock.patch('core.views.requests.get', side_effect=self._fake_get({'deployments_healthy': None})):
