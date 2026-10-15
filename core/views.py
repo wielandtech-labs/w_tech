@@ -142,6 +142,9 @@ CLUSTER_METRICS_TTL = 30  # seconds; homelab.js polls on the same interval
 CLUSTER_METRICS_BACKUP_TTL = 60 * 60  # served when Prometheus is unreachable
 # Availability SLO tiers, highest first; 99.9 matches the w_homelab Grafana SLO dashboards
 AVAILABILITY_SLOS = (99.9, 99.0)
+# Traefik's default request-duration buckets (seconds). The histogram can't
+# resolve within a bucket, so p99 is reported as the bucket bound it falls under.
+TRAEFIK_BUCKETS = (0.1, 0.3, 1.2, 5.0)
 
 CLUSTER_QUERIES = {
     'cpu_percent': '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
@@ -159,6 +162,8 @@ CLUSTER_QUERIES = {
     'deployments_total': 'count(kube_deployment_spec_replicas)',
     'deployments_healthy': 'count(kube_deployment_status_replicas_available >= kube_deployment_spec_replicas)',
     'requests_per_second': 'sum(rate(traefik_service_requests_total[5m]))',
+    'latency_p99_seconds': 'histogram_quantile(0.99, sum by (le) (rate(traefik_service_request_duration_seconds_bucket[5m])))',
+    'error_percent': 'sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) / sum(rate(traefik_service_requests_total[5m])) * 100',
     # CNPG exports the same database from every replica; dedupe by datname
     'db_size_bytes': 'sum(max by (datname) (cnpg_pg_database_size_bytes))',
     'db_count': 'count(max by (datname) (cnpg_pg_database_size_bytes))',
@@ -268,6 +273,8 @@ def _cluster_metrics_response():
         'cpu': None,
         'memory': None,
         'traffic': None,
+        'latency': None,
+        'error_rate': None,
         'database': None,
         'status': 'ok',
         'cache_hit': False,
@@ -318,6 +325,22 @@ def _cluster_metrics_response():
         metrics['traffic'] = {
             'requests_per_second': round(values['requests_per_second'], 1),
             'description': 'Ingress Traffic',
+        }
+    if present('latency_p99_seconds'):
+        # NaN when there was no traffic; past the last bucket it's unbounded
+        p99 = values['latency_p99_seconds']
+        bound = next((b for b in TRAEFIK_BUCKETS if p99 <= b), None)
+        if bound is not None:
+            metrics['latency'] = {
+                'p99_ms': round(bound * 1000),
+                'description': 'Ingress Latency (p99)',
+            }
+    if present('error_percent'):
+        # 0/0 (no traffic) is NaN: no failed requests
+        error_percent = values['error_percent']
+        metrics['error_rate'] = {
+            'percentage': 0.0 if math.isnan(error_percent) else round(error_percent, 2),
+            'description': 'Ingress 5xx Rate',
         }
     if present('db_size_bytes', 'db_count'):
         metrics['database'] = {

@@ -88,6 +88,8 @@ class ClusterMetricsViewTests(TestCase):
         'deployments_total': 82,
         'deployments_healthy': 81,
         'requests_per_second': 1.948,
+        'latency_p99_seconds': 0.0996,
+        'error_percent': 0.0412,
         'db_size_bytes': 369584143,
         'db_count': 21,
     }
@@ -138,9 +140,10 @@ class ClusterMetricsViewTests(TestCase):
             'availability.slo_met',
             'nodes.count', 'nodes.ready', 'traffic.requests_per_second',
             'database.size_mb', 'database.databases',
+            'latency.p99_ms', 'error_rate.percentage',
+            'cpu.percentage', 'memory.percentage',
             # legacy, until w_portfolio's new LiveStats is in prod
-            'cpu.percentage', 'cpu.total_cores', 'memory.percentage',
-            'memory.used_gb', 'memory.total_gb', 'uptime.formatted',
+            'cpu.total_cores', 'memory.used_gb', 'memory.total_gb', 'uptime.formatted',
             'nodes_count', 'reachable_nodes',
         ]
         for path in paths:
@@ -188,6 +191,24 @@ class ClusterMetricsViewTests(TestCase):
             with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_percent': raw})):
                 a = self.client.get(self.url).json()['availability']
             self.assertEqual((a['percentage'], a['slo_met'], a['state']), (shown, slo_met, state), raw)
+
+    def test_latency_is_ceiled_to_traefik_bucket(self):
+        # Traefik's default buckets can't resolve below their bounds
+        cases = [(0.0996, 100), (0.1, 100), (0.25, 300), (1.0, 1200), (4.9, 5000),
+                 (7.5, None), (float('nan'), None)]
+        for raw, p99_ms in cases:
+            cache.clear()
+            with mock.patch('core.views.requests.get', side_effect=self._fake_get({'latency_p99_seconds': raw})):
+                latency = self.client.get(self.url).json()['latency']
+            self.assertEqual(latency and latency['p99_ms'], p99_ms, raw)
+
+    def test_error_rate(self):
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get()):
+            self.assertEqual(self.client.get(self.url).json()['error_rate']['percentage'], 0.04)
+        cache.clear()
+        # No ingress traffic at all: 0/0 is NaN, which isn't an error
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get({'error_percent': float('nan')})):
+            self.assertEqual(self.client.get(self.url).json()['error_rate']['percentage'], 0.0)
 
     def test_empty_healthy_count_means_zero(self):
         with mock.patch('core.views.requests.get', side_effect=self._fake_get({'deployments_healthy': None})):
