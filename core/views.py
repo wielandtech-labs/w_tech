@@ -327,9 +327,12 @@ def _cluster_metrics_response():
             'description': 'Ingress Traffic',
         }
     if present('latency_p99_seconds'):
-        # NaN when there was no traffic; past the last bucket it's unbounded
+        # NaN when there was no traffic. In the +Inf bucket Prometheus returns
+        # the last finite bound, so a p99 there is unbounded, not <= it.
         p99 = values['latency_p99_seconds']
         bound = next((b for b in TRAEFIK_BUCKETS if p99 <= b), None)
+        if p99 >= TRAEFIK_BUCKETS[-1]:
+            bound = None
         if bound is not None:
             metrics['latency'] = {
                 'p99_ms': round(bound * 1000),

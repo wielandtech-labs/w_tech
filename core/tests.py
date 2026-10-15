@@ -194,7 +194,7 @@ class ClusterMetricsViewTests(TestCase):
 
     def test_latency_is_ceiled_to_traefik_bucket(self):
         # Traefik's default buckets can't resolve below their bounds
-        cases = [(0.0996, 100), (0.1, 100), (0.25, 300), (1.0, 1200), (4.9, 5000),
+        cases = [(0.0996, 100), (0.1, 100), (0.25, 300), (1.0, 1200), (4.9, 5000), (5.0, None),
                  (7.5, None), (float('nan'), None)]
         for raw, p99_ms in cases:
             cache.clear()
