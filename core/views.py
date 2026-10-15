@@ -6,6 +6,7 @@ from django.core.mail import send_mail
 from django.contrib import messages
 from django.utils.html import format_html
 import math
+import time
 import requests
 import logging
 
@@ -145,6 +146,10 @@ AVAILABILITY_SLOS = (99.9, 99.0)
 # Traefik's default request-duration buckets (seconds). The histogram can't
 # resolve within a bucket, so p99 is reported as the bucket bound it falls under.
 TRAEFIK_BUCKETS = (0.1, 0.3, 1.2, 5.0)
+# The availability card's 30-day window as 30 rolling 24h values, oldest
+# first, for w_portfolio's SLO graph. Same expression as availability_percent.
+AVAILABILITY_DAILY_QUERY = 'avg(avg_over_time((max by (target) (probe_success))[1d:5m])) * 100'
+AVAILABILITY_DAYS = 30
 
 CLUSTER_QUERIES = {
     'cpu_percent': '100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))',
@@ -209,6 +214,29 @@ def _prom(query):
     if not result:
         return None
     return float(result[0]['value'][1])
+
+
+def _availability_daily():
+    """AVAILABILITY_DAILY_QUERY at one-day steps ending now, floored like the card.
+
+    Returns None when there's no data; a day with no probes is just missing.
+    """
+    end = time.time()
+    response = requests.get(
+        f"{settings.PROMETHEUS_URL}/api/v1/query_range",
+        params={
+            'query': AVAILABILITY_DAILY_QUERY,
+            'start': end - (AVAILABILITY_DAYS - 1) * 86400,
+            'end': end,
+            'step': 86400,
+        },
+        timeout=3,
+    )
+    response.raise_for_status()
+    result = response.json().get('data', {}).get('result', [])
+    if not result:
+        return None
+    return [_availability(float(v))[0] for _, v in result[0]['values']]
 
 
 def get_cluster_metrics(request):
@@ -288,8 +316,14 @@ def _cluster_metrics_response():
             'services': int(values['probed_services']),
             'slo_met': slo_met,
             'state': state,
+            'daily': None,
             'description': 'Availability (30d)',
         }
+        try:
+            metrics['availability']['daily'] = _availability_daily()
+        except (requests.exceptions.RequestException, KeyError, IndexError, TypeError, ValueError) as e:
+            logger.warning(f"Daily availability query failed: {e}")
+            errors.append('availability_daily')
     if present('deployments_total') and 'deployments_healthy' not in errors:
         metrics['deployments'] = {
             'total': int(values['deployments_total']),

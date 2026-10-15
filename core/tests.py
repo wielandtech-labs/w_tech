@@ -72,6 +72,14 @@ def _prom_response(value):
     return response
 
 
+def _prom_range_response(values):
+    response = mock.Mock()
+    response.raise_for_status.return_value = None
+    result = [] if values is None else [{'metric': {}, 'values': [[i * 86400, str(v)] for i, v in enumerate(values)]}]
+    response.json.return_value = {'status': 'success', 'data': {'result': result}}
+    return response
+
+
 @override_settings(CACHES=LOCMEM_CACHE)
 class ClusterMetricsViewTests(TestCase):
     SAMPLES = {
@@ -98,11 +106,18 @@ class ClusterMetricsViewTests(TestCase):
         cache.clear()
         self.url = reverse('core:cluster_metrics')
 
+    DAILY = [100, 99.97957, 100, 99.59150]
+
     def _fake_get(self, overrides=None):
-        samples = {**self.SAMPLES, **(overrides or {})}
+        samples = {**self.SAMPLES, 'availability_daily': self.DAILY, **(overrides or {})}
+        daily = samples.pop('availability_daily')
         by_query = {CLUSTER_QUERIES[k]: v for k, v in samples.items()}
 
         def fake_get(url, params, timeout):
+            if url.endswith('/query_range'):
+                if isinstance(daily, Exception):
+                    raise daily
+                return _prom_range_response(daily)
             value = by_query[params['query']]
             if isinstance(value, Exception):
                 raise value
@@ -156,6 +171,17 @@ class ClusterMetricsViewTests(TestCase):
         self.assertEqual(data['nodes'], {'count': 4, 'ready': 4, 'description': 'Nodes'})
         self.assertEqual((data['nodes_count'], data['reachable_nodes']), (4, 4))
         self.assertEqual(data['uptime']['formatted'], '2d 9h')
+        # The SLO graph: daily availability, oldest first, floored like the card
+        self.assertEqual(data['availability']['daily'], [100.0, 99.97, 100.0, 99.59])
+
+    def test_failed_daily_query_keeps_availability_card(self):
+        for failure in (requests.exceptions.HTTPError('500'), None):
+            cache.clear()
+            with mock.patch('core.views.requests.get', side_effect=self._fake_get({'availability_daily': failure})):
+                data = self.client.get(self.url).json()
+            self.assertEqual(data['availability']['percentage'], 99.97)
+            self.assertIsNone(data['availability']['daily'])
+            self.assertEqual(data['errors'], ['availability_daily'] if failure else [])
 
     def test_failed_ready_query_omits_legacy_node_fields(self):
         overrides = {'nodes_ready': requests.exceptions.HTTPError('500')}
