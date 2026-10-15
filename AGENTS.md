@@ -62,7 +62,10 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   in-cluster with `Host: raphaelwieland.com`, so keep that endpoint's path and
   shape stable: its `LiveStats.astro` reads fields from the JSON, and
   `ClusterMetricsViewTests.test_w_portfolio_contract` pins them. Remove a
-  field only after w_portfolio has stopped reading it in prod. The `Site` record (sitemap, password-reset links) points at
+  field only after w_portfolio has stopped reading it in prod. Top-level
+  `errors` is the list of failed queries, so the 5xx card is `error_rate`.
+  `latency.p99_ms` is a Traefik bucket bound (`TRAEFIK_BUCKETS`), not an
+  interpolated value. The `Site` record (sitemap, password-reset links) points at
   raphaelwieland.com.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.
