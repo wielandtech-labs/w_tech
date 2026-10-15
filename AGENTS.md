@@ -66,7 +66,8 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
   `errors` is the list of failed queries, so the 5xx card is `error_rate`.
   `latency.p99_ms` is `histogram_quantile`'s interpolated p99 over w_homelab's
   Traefik buckets (0.025–5 s), null at or past the top one
-  (`TRAEFIK_TOP_BUCKET`). The `Site` record (sitemap, password-reset links) points at
+  (`TRAEFIK_TOP_BUCKET`). It and `traffic` leave out `INGRESS_EXCLUDE`
+  (monitoring, ntfy, Homepage: internal tools and long-lived streams). The `Site` record (sitemap, password-reset links) points at
   raphaelwieland.com.
 - Environment docs: `docs/onboarding-new-app.md` and `AGENTS.md` in
   `wielandtech-labs/w_homelab`.

@@ -228,6 +228,11 @@ class ClusterMetricsViewTests(TestCase):
                 latency = self.client.get(self.url).json()['latency']
             self.assertEqual(latency and latency['p99_ms'], p99_ms, raw)
 
+    def test_public_ingress_excludes_internal_services(self):
+        # Long-lived streams (ntfy, Grafana live) would set the public p99
+        for key in ('requests_per_second', 'latency_p99_seconds'):
+            self.assertIn('service!~"(monitoring|ntfy|homepage)-.*"', CLUSTER_QUERIES[key], key)
+
     def test_error_rate(self):
         with mock.patch('core.views.requests.get', side_effect=self._fake_get()):
             self.assertEqual(self.client.get(self.url).json()['error_rate']['percentage'], 0.04)
