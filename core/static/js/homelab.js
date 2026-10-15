@@ -35,11 +35,13 @@ function fetchMetrics() {
             // Row 1: reliability and fleet
             if (data.availability) {
                 // Colored by which SLO tier (99.9% / 99%) the month meets
+                // A backup snapshot cached before this deploy has no slo_met/state
                 const a = data.availability;
-                const slo = a.slo_met === null ? 'below 99% SLO' : `meets ${a.slo_met}% SLO`;
+                const graded = a.state !== undefined;
+                const slo = !graded ? '' : (a.slo_met === null ? ' · below 99% SLO' : ` · meets ${a.slo_met}% SLO`);
                 html += metricCard(a.description,
-                    `<span class="slo-${a.state}">${a.percentage}%</span>`,
-                    `${a.services} services · ${slo}`);
+                    graded ? `<span class="slo-${a.state}">${a.percentage}%</span>` : `${a.percentage}%`,
+                    `${a.services} services${slo}`);
             }
 
             if (data.deployments) {
