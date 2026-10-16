@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.utils.html import format_html
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 import requests
 import logging
 
@@ -265,13 +266,19 @@ def _cluster_metrics_response():
         cached_metrics['cache_hit'] = True
         return JsonResponse(cached_metrics)
 
+    # Run every query at once: a cache miss then costs the slowest query, not
+    # the sum of all of them (which set the ingress p99 this page reports).
+    with ThreadPoolExecutor(max_workers=len(CLUSTER_QUERIES) + 1) as pool:
+        futures = {key: pool.submit(_prom, query) for key, query in CLUSTER_QUERIES.items()}
+        daily = pool.submit(_availability_daily)
+
     values = {}
     errors = []
-    for key, query in CLUSTER_QUERIES.items():
+    for key, future in futures.items():
         try:
-            values[key] = _prom(query)
+            values[key] = future.result()
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            # Prometheus is unreachable or hung; don't wait on every remaining query
+            # Prometheus is unreachable or hung: treat every query as failed
             logger.warning(f"Prometheus unreachable: {e}")
             values = dict.fromkeys(CLUSTER_QUERIES)
             errors = list(CLUSTER_QUERIES)
@@ -326,7 +333,7 @@ def _cluster_metrics_response():
             'description': 'Availability (30d)',
         }
         try:
-            metrics['availability']['daily'] = _availability_daily()
+            metrics['availability']['daily'] = daily.result()
         except (requests.exceptions.RequestException, KeyError, IndexError, TypeError, ValueError) as e:
             logger.warning(f"Daily availability query failed: {e}")
             errors.append('availability_daily')

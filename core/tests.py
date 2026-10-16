@@ -1,9 +1,10 @@
+import threading
 import requests
 from django.core.cache import cache
 from django.test import TestCase, SimpleTestCase, override_settings
 from django.urls import reverse
 from unittest import mock
-from core.views import CLUSTER_QUERIES
+from core.views import AVAILABILITY_DAILY_QUERY, CLUSTER_QUERIES
 from core.sitemaps import StaticViewSitemap
 from core.redis_client import RedisClient
 
@@ -261,12 +262,41 @@ class ClusterMetricsViewTests(TestCase):
 
         self.assertIsNone(cache.get('cluster_metrics_backup'))
 
-    def test_timeout_short_circuits_remaining_queries(self):
-        with mock.patch('core.views.requests.get', side_effect=requests.exceptions.ReadTimeout('hung')) as get:
+    def test_queries_run_concurrently(self):
+        # Each call waits until every query (and the daily range) is in flight,
+        # so run one after another they'd break the barrier instead.
+        barrier = threading.Barrier(len(CLUSTER_QUERIES) + 1, timeout=5)
+        fake_get = self._fake_get()
+
+        def get(url, params, timeout):
+            barrier.wait()
+            return fake_get(url, params, timeout)
+
+        with mock.patch('core.views.requests.get', side_effect=get) as mocked:
             data = self.client.get(self.url).json()
 
-        self.assertEqual(get.call_count, 1)
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['errors'], [])
+        queried = sorted(call.kwargs['params']['query'] for call in mocked.call_args_list)
+        self.assertEqual(queried, sorted([*CLUSTER_QUERIES.values(), AVAILABILITY_DAILY_QUERY]))
+
+    def test_timeout_marks_every_query_failed(self):
+        with mock.patch('core.views.requests.get', side_effect=requests.exceptions.ReadTimeout('hung')):
+            data = self.client.get(self.url).json()
+
         self.assertEqual(data['status'], 'unavailable')
+
+    def test_one_connection_error_serves_backup(self):
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get()):
+            self.client.get(self.url)
+        cache.delete('cluster_metrics')
+
+        overrides = {'cpu_percent': requests.exceptions.ConnectionError('reset')}
+        with mock.patch('core.views.requests.get', side_effect=self._fake_get(overrides)):
+            data = self.client.get(self.url).json()
+
+        self.assertEqual(data['status'], 'cached')
+        self.assertEqual(data['cpu']['percentage'], 31.2)
 
     def test_cache_backend_error_returns_json(self):
         with mock.patch('core.views.cache.get', side_effect=ConnectionError('redis down')):
