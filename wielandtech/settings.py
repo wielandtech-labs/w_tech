@@ -81,6 +81,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django_prometheus.middleware.PrometheusBeforeMiddleware',  # Prometheus (must be first)
     'wielandtech.middleware.AllowMetricsEndpointMiddleware',  # Allow Prometheus scraping via pod IP
+    'wielandtech.middleware.WwwRedirectMiddleware',  # www -> apex, before anything sets a cookie
     'wielandtech.middleware.InternalAdminCookieMiddleware',  # Must precede Session/Csrf middleware
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
