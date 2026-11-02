@@ -757,3 +757,31 @@ def get_weather_history(request):
     except Exception as e:
         logger.error(f"Unexpected error fetching weather history: {e}")
         return JsonResponse({'status': 'error', 'error': 'Internal error'})
+
+
+def robots_txt(request):
+    """robots.txt: open on production, closed everywhere else (dev, QA, review apps)."""
+    from django.http import HttpResponse
+
+    from .context_processors import seo
+
+    if not seo(request)["seo_indexable"]:
+        return HttpResponse("User-agent: *\nDisallow: /\n", content_type="text/plain")
+    lines = [
+        "User-agent: *",
+        "Disallow: /account/",
+        "Disallow: /admin/",
+        "Disallow: /social-auth/",
+        "Disallow: /api/",
+        "Disallow: /metrics",
+        "Disallow: /blog/search/",
+        "Disallow: /blog/like/",
+        "Disallow: /images/create/",
+        "Disallow: /images/upload/",
+        "Disallow: /images/like/",
+        "Disallow: /maintenance/",
+        "",
+        f"Sitemap: {settings.SITE_URL}/sitemap.xml",
+        "",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")

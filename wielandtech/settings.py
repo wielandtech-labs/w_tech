@@ -49,6 +49,12 @@ CSRF_TRUSTED_ORIGINS = [
 
 SITE_ID = 1
 
+# Canonical origin for SEO tags (canonical links, Open Graph, JSON-LD, robots.txt).
+# Pages served from any other host (dev, QA, review apps, k8s.local) get
+# noindex, so search engines only ever index the production site.
+SITE_URL = os.getenv("SITE_URL", "https://raphaelwieland.com").rstrip("/")
+SEO_INDEXED_HOSTS = {"raphaelwieland.com", "www.raphaelwieland.com"}
+
 # Application definition
 INSTALLED_APPS = [
     'django_prometheus',  # Prometheus monitoring (must be first)
@@ -104,6 +110,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'blog.context_processors.search_form',
+                'core.context_processors.seo',
                 'social_django.context_processors.backends',
                 'social_django.context_processors.login_redirect',
             ],
