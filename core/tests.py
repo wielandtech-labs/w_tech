@@ -36,7 +36,9 @@ class StaticViewSitemapTests(SimpleTestCase):
         self.sitemap = StaticViewSitemap()
 
     def test_items(self):
-        self.assertEqual(self.sitemap.items(), ['core:core_home'])
+        items = self.sitemap.items()
+        self.assertEqual(items[0], 'core:core_home')
+        self.assertIn('blog:post_list', items)
 
     def test_location(self):
         self.assertEqual(self.sitemap.location('core:core_home'), '/')
@@ -331,3 +333,42 @@ class ClusterMetricsViewTests(TestCase):
             data = self.client.get(self.url).json()
 
         self.assertEqual(data['status'], 'unavailable')
+
+
+PROD = {"HTTP_HOST": "raphaelwieland.com"}
+
+
+@override_settings(ALLOWED_HOSTS=["raphaelwieland.com", "dev.wielandtech.com", "testserver"])
+class SeoTests(TestCase):
+    def test_home_has_canonical_og_and_person_jsonld(self):
+        import json
+        import re
+
+        html = self.client.get("/", **PROD).content.decode()
+        self.assertIn('<link rel="canonical" href="https://raphaelwieland.com/">', html)
+        self.assertIn('<meta name="robots" content="index, follow">', html)
+        self.assertIn('property="og:title"', html)
+        self.assertNotIn("An online portfolio", html)
+        blob = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1)
+        types = {node["@type"] for node in json.loads(blob)["@graph"]}
+        self.assertEqual(types, {"WebSite", "Person"})
+
+    def test_non_production_hosts_are_noindex(self):
+        html = self.client.get("/", HTTP_HOST="dev.wielandtech.com").content.decode()
+        self.assertIn('<meta name="robots" content="noindex, nofollow">', html)
+        robots = self.client.get("/robots.txt", HTTP_HOST="dev.wielandtech.com").content.decode()
+        self.assertIn("Disallow: /\n", robots)
+
+    def test_robots_txt_on_production(self):
+        response = self.client.get("/robots.txt", **PROD)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain")
+        body = response.content.decode()
+        self.assertIn("Sitemap: https://raphaelwieland.com/sitemap.xml", body)
+        self.assertIn("Disallow: /account/", body)
+        self.assertNotIn("Disallow: /\n", body)
+
+    def test_sitemap_includes_homepage(self):
+        body = self.client.get("/sitemap.xml", **PROD).content.decode()
+        self.assertIn("<loc>https://raphaelwieland.com/</loc>", body)
+        self.assertIn("<loc>https://raphaelwieland.com/blog/</loc>", body)
