@@ -8,6 +8,7 @@ from django.test import RequestFactory, SimpleTestCase
 from wielandtech.middleware import (
     InternalAdminCookieMiddleware,
     SecurityHeadersMiddleware,
+    WwwRedirectMiddleware,
 )
 
 
@@ -81,3 +82,26 @@ class SecurityHeadersMiddlewareTests(SimpleTestCase):
         self.assertEqual(response['X-Frame-Options'], 'DENY')
         self.assertEqual(response['Referrer-Policy'], 'strict-origin-when-cross-origin')
 
+
+
+class WwwRedirectMiddlewareTests(SimpleTestCase):
+    def _run(self, host, path='/', method='get'):
+        middleware = WwwRedirectMiddleware(lambda request: HttpResponse('served'))
+        request = getattr(RequestFactory(), method)(path, HTTP_HOST=host)
+        return middleware(request)
+
+    def test_www_redirects_to_apex_keeping_path_and_query(self):
+        response = self._run('www.raphaelwieland.com', '/blog/?page=2')
+        self.assertEqual(response.status_code, 308)
+        self.assertEqual(response['Location'], 'https://raphaelwieland.com/blog/?page=2')
+
+    def test_post_keeps_its_method(self):
+        self.assertEqual(self._run('www.raphaelwieland.com', method='post').status_code, 308)
+
+    def test_apex_is_served(self):
+        self.assertEqual(self._run('raphaelwieland.com').content, b'served')
+
+    def test_unknown_www_host_is_rejected_not_redirected(self):
+        from django.core.exceptions import DisallowedHost
+        with self.assertRaises(DisallowedHost):
+            self._run('www.evil.example')

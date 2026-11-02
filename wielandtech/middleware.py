@@ -1,7 +1,7 @@
 """
 Custom middleware for security and access control.
 """
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, HttpResponsePermanentRedirect
 from django.conf import settings
 
 # Hosts allowed to reach the Django admin (LAN-only access paths).
@@ -37,6 +37,27 @@ class AllowMetricsEndpointMiddleware:
         
         response = self.get_response(request)
         return response
+
+
+class WwwRedirectMiddleware:
+    """
+    Send www.<domain> to <domain> with path and query, so search sees one site.
+    A 308 rather than a 301 so a form POSTed to www keeps its method and body.
+    The target is the apex of the requested host, which get_host() has already
+    checked against ALLOWED_HOSTS, so this can't redirect off-site.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        host = request.get_host()
+        if host.lower().startswith('www.'):
+            response = HttpResponsePermanentRedirect(
+                f'https://{host[4:]}{request.get_full_path()}'
+            )
+            response.status_code = 308
+            return response
+        return self.get_response(request)
 
 
 class RestrictAdminMiddleware:
