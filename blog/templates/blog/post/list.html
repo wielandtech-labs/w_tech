@@ -2,7 +2,11 @@
 {% load blog_tags %}
 {% load static %}
 
-{% block title %}Blog | WielandTech{% endblock %}
+{% block title %}{% if tag %}Posts tagged {{ tag.name }} | {% endif %}Blog | WielandTech{% endblock %}
+{% block meta_description %}Raphael Wieland's blog about life, technology and the intersection thereof: Kubernetes, homelab networking, Django and self-hosting.{% endblock %}
+{% block og_title %}WielandTech Blog{% endblock %}
+{% block og_description %}Writing about life, technology and the intersection thereof.{% endblock %}
+{% block robots %}{% if posts.number > 1 or tag %}noindex, follow{% else %}index, follow{% endif %}{% endblock %}
 
 {% block blog_content %}
     {% if tag %}
