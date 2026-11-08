@@ -14,14 +14,14 @@
 	<p class="job"><a href="https://github.com/wielandtech-labs/w_lab" target="_blank">w/homelab</a> - Kubernetes Homelab</p>
 
 	<p>
-		Three Dell OptiPlexes and a Synology NAS in my house, running K3s. It started because I wanted Redis for this site and got out of hand from there.
+		Three Dell OptiPlexes, a GPU worker, and a Synology NAS in my house, running K3s. It started because I wanted Redis for this site and got out of hand from there.
 	</p>
 
 	<ul>
 		<li><strong>GitOps:</strong> Everything deploys from Git through Flux and Helm. Secrets go in as Sealed Secrets, so they can live in the repo too.</li>
 		<li><strong>Getting traffic in:</strong> Public requests hit a $5 DigitalOcean droplet and travel over WireGuard to Traefik in the cluster. My router has zero inbound ports open.</li>
 		<li><strong>Storage:</strong> MetalLB for load balancers, and the Synology serves iSCSI and NFS volumes to the cluster.</li>
-		<li><strong>Monitoring:</strong> Prometheus, Grafana, Alertmanager, and Netdata. The <a href="{% url 'core:homelab' %}">Homelab page</a> shows live metrics from all three nodes, refreshed every second.</li>
+		<li><strong>Monitoring:</strong> Prometheus, Grafana, and Alertmanager. The <a href="{% url 'core:homelab' %}">Homelab page</a> shows live cluster metrics from Prometheus, refreshed every 30 seconds.</li>
 		<li><strong>Data:</strong> CloudNativePG runs Postgres with nightly snapshots. Plex, Home Assistant, and n8n run alongside everything else.</li>
 	</ul>
 	<p>It stayed up through the October 2025 AWS outage. It is also more expensive and less reliable than the cloud.</p>
@@ -29,7 +29,7 @@
 
 	<p class="date float_right">2021&ndash;2026</p>
 
-	<p class="job"><a href="https://warn.wielandtech.com/" target="_blank">WARN Tracker</a> - Python Application</p>
+	<p class="job"><a href="https://warnindex.com/" target="_blank">WARN Index</a> - Python Application</p>
 
 	<p>
 		A public dashboard of WARN notices, the layoff and closure filings US states require from employers. It rebuilds a spreadsheet scraper I wrote in 2021, this time with AI help.
@@ -41,6 +41,30 @@
 		<li><strong>API and dashboard:</strong> A read-only FastAPI API with a small single-page frontend for filtering notices, plus CSV export.</li>
 		<li><strong>Deployment:</strong> Runs as a K3s CronJob on the homelab, with Postgres on CloudNativePG, deployed through Helm and Flux.</li>
 	</ul>
+	<br>
+
+	<p class="date float_right">2026</p>
+
+	<p class="job"><a href="https://r12d.ch/" target="_blank">r12d</a> - Django Web Application</p>
+
+	<p>
+		QR stickers and short links that tie physical things to a private inventory, for households and small businesses. Scanning one doesn't feed anyone's ad profile.
+	</p>
+
+	<ul>
+		<li><strong>Inventory and stickers:</strong> Nested items with search and GPS, printable QR sticker sheets, and scan-to-set-up for new codes.</li>
+		<li><strong>Privacy:</strong> Photo EXIF and GPS data are stripped on upload, there are no third-party trackers, and the admin is reachable only over a private network.</li>
+		<li><strong>Lost and found:</strong> Each sticker has a public finder form that alerts the owner through ntfy.</li>
+	</ul>
+	<br>
+
+	<p class="date float_right">2026</p>
+
+	<p class="job"><a href="https://pisspooridea.lol/" target="_blank">Restroom QR ad network</a> - Django Web Application</p>
+
+	<p>
+		Venues sign up, QR codes go up in their restrooms, patrons scan them, and ad revenue is split across venues by traffic.
+	</p>
 	<br>
 
 	<p class="date float_right">2025&ndash;2026</p>

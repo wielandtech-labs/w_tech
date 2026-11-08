@@ -2,6 +2,9 @@
 {% load static %}
 
 {% block title %}Homelab | WielandTech{% endblock %}
+{% block meta_description %}Live metrics from Raphael Wieland's self-hosted Kubernetes homelab: request rates, latency, errors and saturation across the cluster.{% endblock %}
+{% block og_title %}Homelab | WielandTech{% endblock %}
+{% block og_description %}Live golden signals from a self-hosted Kubernetes homelab.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/homelab.css' %}">
@@ -24,7 +27,7 @@
                 wielandtech-labs/w_lab
             </a>
         </div>
-        <p>Live numbers from the three bare-metal K3s nodes in my house, pulled straight from their Netdata agents every second.</p>
+        <p>Live metrics from my K3s cluster (three bare-metal OptiPlex nodes plus a GPU worker), queried from Prometheus and refreshed every 30 seconds.</p>
         <div class="metrics-container" id="metrics-container">
             <div id="metrics-content">
                 <div class="metrics-loading">Loading metrics...</div>

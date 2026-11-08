@@ -1,4 +1,4 @@
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User
 from django.urls import reverse
 from .models import Post, Comment
@@ -135,3 +135,39 @@ class BlogTemplateTagTests(TestCase):
         from .templatetags.blog_tags import markdown_format
         html = markdown_format('Use `pip install` to install.')
         self.assertIn('<code>pip install</code>', html)
+
+
+@override_settings(ALLOWED_HOSTS=["raphaelwieland.com", "testserver"])
+class BlogSeoTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='seo', password='x')
+        self.post = Post.objects.create(
+            title='Exposing </script> my homelab', slug='exposing', author=self.user,
+            body='# Heading\n\nWireGuard tunnels **make** remote access easy. ' + 'word ' * 60
+                 + '\n\n```\ncode block\n```',
+            status=Post.Status.PUBLISHED,
+        )
+        self.post.tags.add('homelab')
+
+    def test_detail_has_description_og_article_and_safe_jsonld(self):
+        import json
+        import re
+
+        html = self.client.get(self.post.get_absolute_url(), HTTP_HOST='raphaelwieland.com').content.decode()
+        desc = re.search(r'<meta name="description" content="([^"]*)"', html).group(1)
+        self.assertTrue(desc.startswith('WireGuard tunnels make remote access easy.'))
+        self.assertLessEqual(len(desc), 160)
+        self.assertNotIn('Heading', desc)
+        self.assertIn('<meta property="og:type" content="article">', html)
+        self.assertIn('article:published_time', html)
+        blob = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1)
+        self.assertNotIn('</script>', blob)
+        data = json.loads(blob)
+        self.assertEqual(data['@type'], 'BlogPosting')
+        self.assertEqual(data['headline'], 'Exposing </script> my homelab')
+        self.assertEqual(data['keywords'], ['homelab'])
+
+    def test_plain_summary_short_text_untouched(self):
+        from blog.templatetags.blog_tags import plain_summary
+
+        self.assertEqual(plain_summary('Hello *world*.'), 'Hello world.')

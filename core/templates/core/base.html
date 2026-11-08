@@ -4,11 +4,23 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Welcome | WielandTech{% endblock %}</title>
-    <meta name="description" content="Raphael Wieland, backend engineer. Resume, projects, a blog, and a Kubernetes homelab running in my house.">
+    <title>{% block title %}Raphael Wieland | WielandTech{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Raphael Wieland: software and infrastructure engineer. Resume, projects, a live homelab dashboard and a blog about Kubernetes, Django and self-hosting.{% endblock %}">
+    {% if seo_indexable %}<meta name="robots" content="{% block robots %}index, follow{% endblock %}">{% else %}<meta name="robots" content="noindex, nofollow">{% endif %}
+    <link rel="canonical" href="{% block canonical %}{{ canonical_url }}{% endblock %}">
+    <meta property="og:site_name" content="WielandTech">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:title" content="{% block og_title %}Raphael Wieland | WielandTech{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Software and infrastructure engineer. Resume, projects, homelab and blog.{% endblock %}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:image" content="{% block og_image %}{{ site_url }}{% static 'img/icon-512x512.png' %}{% endblock %}">
+    <meta name="twitter:card" content="summary">
+    {% block og_extra %}{% endblock %}
+    <link rel="alternate" type="application/rss+xml" title="WielandTech Blog" href="{{ site_url }}/blog/feed/">
+    {% block structured_data %}{% endblock %}
     <link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
     <link href="{% static 'site.webmanifest' %}" rel="manifest" />
-    <link href="icon.png" rel="apple-touch-icon" />
+    <link href="{% static 'img/icon-192x192.png' %}" rel="apple-touch-icon" />
     <link href="{% static 'css/normalize.css' %}" rel="stylesheet" />
     <link rel="stylesheet" href="{% static 'css/dark-mode.css' %}">
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
@@ -34,7 +46,7 @@
     <div class="wrapper">
         {% if request.path == '/' %}
             <div class="splash parallax" id="homepage">
-                <a href="/#about" class="header">WIELANDTECH</a>
+                <a href="/#about" class="header">RAPHAEL WIELAND</a>
                 <a href="/#about" class="scroll-cta">
                     <div class="mouse">
                         <div class="scroller"></div>

@@ -17,8 +17,6 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key-dev")
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
-    "wielandtech.com",
-    "www.wielandtech.com",
     "raphaelwieland.com",
     "www.raphaelwieland.com",
     "dev.wielandtech.com",
@@ -34,8 +32,6 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://www.wielandtech.com",
-    "https://wielandtech.com",
     "https://raphaelwieland.com",
     "https://www.raphaelwieland.com",
     "https://wielandtech.k8s.local",
@@ -52,6 +48,12 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 SITE_ID = 1
+
+# Canonical origin for SEO tags (canonical links, Open Graph, JSON-LD, robots.txt).
+# Pages served from any other host (dev, QA, review apps, k8s.local) get
+# noindex, so search engines only ever index the production site.
+SITE_URL = os.getenv("SITE_URL", "https://raphaelwieland.com").rstrip("/")
+SEO_INDEXED_HOSTS = {"raphaelwieland.com", "www.raphaelwieland.com"}
 
 # Application definition
 INSTALLED_APPS = [
@@ -79,6 +81,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django_prometheus.middleware.PrometheusBeforeMiddleware',  # Prometheus (must be first)
     'wielandtech.middleware.AllowMetricsEndpointMiddleware',  # Allow Prometheus scraping via pod IP
+    'wielandtech.middleware.WwwRedirectMiddleware',  # www -> apex, before anything sets a cookie
     'wielandtech.middleware.InternalAdminCookieMiddleware',  # Must precede Session/Csrf middleware
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -108,6 +111,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'blog.context_processors.search_form',
+                'core.context_processors.seo',
                 'social_django.context_processors.backends',
                 'social_django.context_processors.login_redirect',
             ],
@@ -235,10 +239,8 @@ CACHES = {
     }
 }
 
-# Netdata monitoring configuration
-NETDATA_URL = os.environ.get('NETDATA_URL', 'http://netdata.netdata.svc.cluster.local:19999')
-# For parent-child Netdata setups, specify which hosts to monitor (comma-separated)
-NETDATA_HOSTS = os.environ.get('NETDATA_HOSTS', 'wtech7062,wtech7061,wtech7063').split(',')
+# Prometheus (kube-prometheus-stack) backing the homelab cluster metrics
+PROMETHEUS_URL = os.environ.get('PROMETHEUS_URL', 'http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090')
 
 # Security settings for production
 # These are enabled when DEBUG=False

@@ -36,3 +36,24 @@ def show_latest_posts(count=5):
 @register.simple_tag
 def total_posts():
     return Post.published.count()
+
+
+@register.filter(name='plain_summary')
+def plain_summary(text, length=160):
+    """Markdown body -> plain-text summary for meta descriptions.
+
+    Skips code blocks and headings, then cuts at a word boundary.
+    """
+    import re
+
+    from django.utils.html import strip_tags
+
+    text = re.sub(r"```.*?```", " ", text or "", flags=re.S)
+    html = markdown.markdown(text)
+    html = re.sub(r"<h[1-6][^>]*>.*?</h[1-6]>", " ", html, flags=re.S)
+    plain = " ".join(strip_tags(html).split())
+    length = int(length)
+    if len(plain) <= length:
+        return plain
+    cut = plain[: length - 1].rsplit(" ", 1)[0].rstrip(",.;:")
+    return cut + "…"

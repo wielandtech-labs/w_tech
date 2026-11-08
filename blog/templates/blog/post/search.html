@@ -1,6 +1,7 @@
 {% extends "blog/base.html" %}
 {% load blog_tags %}
-{% block title %}Search{% endblock %}
+{% block title %}Search | WielandTech Blog{% endblock %}
+{% block robots %}noindex, follow{% endblock %}
 {% block blog_content %}
 <div class="search-results">
     {% if query %}
