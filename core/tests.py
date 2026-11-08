@@ -372,3 +372,35 @@ class SeoTests(TestCase):
         body = self.client.get("/sitemap.xml", **PROD).content.decode()
         self.assertIn("<loc>https://raphaelwieland.com/</loc>", body)
         self.assertIn("<loc>https://raphaelwieland.com/blog/</loc>", body)
+
+
+def _prom_matrix_response(result):
+    response = mock.Mock(status_code=200)
+    response.json.return_value = {'status': 'success', 'data': {'result': result}}
+    return response
+
+
+@override_settings(CACHES=LOCMEM_CACHE)
+class WeatherDataViewTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    @mock.patch('core.views.requests.get')
+    def test_uses_newest_sample_across_pod_series(self, mock_get):
+        # Old pod's series (stale) and new pod's series, as after an HA restart.
+        mock_get.return_value = _prom_matrix_response([
+            {'metric': {'pod': 'old'}, 'values': [[1000, '5.0'], [1100, '6.0']]},
+            {'metric': {'pod': 'new'}, 'values': [[1300, '10.0']]},
+        ])
+        data = self.client.get(reverse('core:weather_data')).json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['temperature_c'], 10.0)
+        self.assertEqual(data['temperature_f'], 50.0)
+        self.assertEqual(data['as_of'], 1300)
+        self.assertEqual(data['wind_direction_cardinal'], 'N')
+
+    @mock.patch('core.views.requests.get')
+    def test_no_reading_in_last_hour(self, mock_get):
+        mock_get.return_value = _prom_matrix_response([])
+        data = self.client.get(reverse('core:weather_data')).json()
+        self.assertEqual(data, {'status': 'no_data'})

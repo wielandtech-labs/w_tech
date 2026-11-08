@@ -1,3 +1,6 @@
+import unittest
+
+from django.db import connection
 from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User
 from django.urls import reverse
@@ -85,6 +88,8 @@ class BlogViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTemplateUsed(resp, 'blog/post/detail.html')
 
+    @unittest.skipIf(connection.vendor == 'sqlite',
+                     'post_search uses Postgres full-text search (SearchRank/ts_rank)')
     def test_post_search_view(self):
         resp = self.client.get(reverse('blog:post_search'), {'query': 'Sample'})
         self.assertEqual(resp.status_code, 200)

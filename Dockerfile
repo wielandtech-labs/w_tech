@@ -27,6 +27,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && pip install -r requirements.txt
 
 
+# --- test stage: run the Django test suite (CI builds it with `target: test`) ---
+# Not part of the runtime image: buildkit only builds stages the requested
+# target depends on. The runner has no Docker daemon or service containers, so
+# tests run here against sqlite; Postgres-only tests skip themselves.
+FROM builder AS test
+WORKDIR /wielandtech
+COPY . .
+RUN DATABASE_ENGINE=sqlite \
+    RECAPTCHA_PUBLIC_KEY=dummy \
+    RECAPTCHA_PRIVATE_KEY=dummy \
+    python manage.py test --noinput -v 2
+
+
 # --- stage 2: runtime image ---
 FROM python:3.12-slim AS runtime
 

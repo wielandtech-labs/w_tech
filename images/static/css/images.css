@@ -368,3 +368,40 @@
         font-size: 1em;
     }
 }
+/* Logged-out (public) gallery */
+.login-cta-bar {
+    display: block;
+    margin: 0 20px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: var(--accent-primary);
+    color: var(--nav-background);
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+}
+
+.login-cta-bar:hover,
+.login-cta-bar:focus-visible {
+    background: var(--highlight);
+}
+
+.image-card--public {
+    margin: 0;
+    border-color: var(--nav-background);
+    background: var(--nav-background);
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: transform 0.2s ease, outline-color 0.2s ease;
+}
+
+.image-card--public:hover {
+    background: var(--nav-background);
+    outline-color: var(--accent-primary);
+}
+
+.image-card--public .info {
+    background: var(--nav-background);
+    color: var(--nav-text);
+    font-weight: 500;
+}
