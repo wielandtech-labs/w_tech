@@ -48,10 +48,10 @@
   display: inline-block;
   background-color: var(--blog-tag-bg);
   color: var(--blog-tag-text);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.85em;
-  margin-right: 8px;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  line-height: 1.5;
   text-decoration: none;
 }
 
