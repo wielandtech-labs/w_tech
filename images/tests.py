@@ -90,6 +90,12 @@ class PublicImageListTests(TestCase):
         self.assertContains(response, '/account/login/?next=/images/')
         self.assertNotContains(response, self.staff_image.get_absolute_url())
 
+    def test_logged_out_list_hides_inactive_staff_images(self):
+        former = User.objects.create_user(username='former', password='pass', is_staff=True, is_active=False)
+        Image.objects.create(user=former, title='Former Photo', url='http://example.com/c.jpg', image='c.jpg')
+        response = self.client.get(reverse('images:list'))
+        self.assertNotContains(response, 'Former Photo')
+
     def test_logged_out_ajax_page_shows_only_staff_images(self):
         response = self.client.get(reverse('images:list'), {'page': 1},
                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest')
@@ -109,6 +115,12 @@ class PublicImageListTests(TestCase):
         self.assertContains(response, 'Staff Photo')
         self.assertContains(response, 'Member Photo')
         self.assertNotContains(response, 'Log in to like and comment')
+
+    def test_logged_in_list_survives_redis_outage(self):
+        self.client.force_login(self.member)
+        with patch('images.views.get_redis', return_value=None):
+            response = self.client.get(reverse('images:list'))
+        self.assertEqual(response.status_code, 200)
 
     def test_protected_views_redirect_logged_out(self):
         urls = [

@@ -15,7 +15,7 @@
     {% else %}
     <figure class="image-card image-card--public">
         {% thumbnail image.image 300x300 crop="smart" as im %}
-        <img src="{{ im.url }}" alt="{{ image.title }}" class="image-thumbnail" loading="lazy" />
+        <img src="{{ im.url }}" alt="" class="image-thumbnail" loading="lazy" />
         <figcaption class="info">{{ image.title }}</figcaption>
     </figure>
     {% endif %}
