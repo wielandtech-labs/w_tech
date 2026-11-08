@@ -1,6 +1,8 @@
 import io
 import tempfile
+import unittest
 
+from django.conf import settings
 from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -75,6 +77,8 @@ class ViewTests(TestCase):
         self.user = User.objects.create_user(username='dave', email='dave@example.com', password='secret123')
         self.profile = Profile.objects.create(user=self.user)
 
+    @unittest.skipIf(settings.RECAPTCHA_PRIVATE_KEY == 'dummy',
+                     'register needs a real reCAPTCHA key to pass the captcha field')
     def test_register_view(self):
         response = self.client.post(reverse('account:register'), {
             'username': 'newuser',
