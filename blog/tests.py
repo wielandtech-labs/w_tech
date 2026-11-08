@@ -176,3 +176,19 @@ class BlogSeoTests(TestCase):
         from blog.templatetags.blog_tags import plain_summary
 
         self.assertEqual(plain_summary('Hello *world*.'), 'Hello world.')
+
+    def test_plain_summary_unescapes_entities(self):
+        from blog.templatetags.blog_tags import plain_summary
+
+        # Autoescape runs on output; the filter must not pre-escape "&".
+        self.assertEqual(plain_summary('Tom & Jerry'), 'Tom & Jerry')
+
+    def test_reading_time(self):
+        from blog.templatetags.blog_tags import reading_time
+
+        self.assertEqual(reading_time(''), 1)
+        self.assertEqual(reading_time(None), 1)
+        self.assertEqual(reading_time('word ' * 50), 1)
+        self.assertEqual(reading_time('word ' * 200), 1)
+        self.assertEqual(reading_time('word ' * 201), 2)
+        self.assertEqual(reading_time('word ' * 800), 4)

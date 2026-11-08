@@ -1,3 +1,5 @@
+import math
+
 import markdown
 
 from django import template
@@ -44,6 +46,7 @@ def plain_summary(text, length=160):
 
     Skips code blocks and headings, then cuts at a word boundary.
     """
+    import html as html_lib
     import re
 
     from django.utils.html import strip_tags
@@ -51,9 +54,16 @@ def plain_summary(text, length=160):
     text = re.sub(r"```.*?```", " ", text or "", flags=re.S)
     html = markdown.markdown(text)
     html = re.sub(r"<h[1-6][^>]*>.*?</h[1-6]>", " ", html, flags=re.S)
-    plain = " ".join(strip_tags(html).split())
+    plain = " ".join(html_lib.unescape(strip_tags(html)).split())
     length = int(length)
     if len(plain) <= length:
         return plain
     cut = plain[: length - 1].rsplit(" ", 1)[0].rstrip(",.;:")
     return cut + "…"
+
+
+@register.filter(name='reading_time')
+def reading_time(text, wpm=200):
+    """Estimated minutes to read `text` at ~200 words/min, at least 1."""
+    words = len((text or "").split())
+    return max(1, math.ceil(words / int(wpm)))
