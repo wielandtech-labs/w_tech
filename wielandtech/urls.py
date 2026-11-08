@@ -21,10 +21,13 @@ from django.urls import include, path
 from django.conf.urls import handler404
 
 from blog.sitemaps import PostSitemap
+from core.sitemaps import StaticViewSitemap
+from core.views import robots_txt
 from wielandtech import settings
 
 sitemaps = {
-    'blog': PostSitemap
+    'static': StaticViewSitemap,
+    'blog': PostSitemap,
 }
 
 urlpatterns = [
@@ -35,6 +38,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('blog/', include('blog.urls', namespace='blog')),
     path('images/', include('images.urls', namespace='images')),
+    path('robots.txt', robots_txt, name='robots_txt'),
     path('sitemap.xml', sitemap, {'sitemaps': sitemaps}, name='django.contrib.sitemaps.views.sitemap'),
     path('social-auth/', include('social_django.urls', namespace='social')),
 ]

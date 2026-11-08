@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Django 5 portfolio/blog site (`wielandtech.com`). Dev setup and project
+Django 5 personal site and blog (`raphaelwieland.com`). Dev setup and project
 structure are in the README.
 
 **Deployment-critical:** merging to `main` publishes a prod-format image tag,
