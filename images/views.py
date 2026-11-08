@@ -40,6 +40,7 @@ def image_create(request):
                    'form': form})
 
 
+@login_required
 def image_detail(request, id, slug):
     image = get_object_or_404(Image, id=id, slug=slug)
     # increment total image views by 1
@@ -79,9 +80,12 @@ def image_like(request):
     return JsonResponse({'status': 'error'})
 
 
-@login_required
 def image_list(request):
     most_likes = Image.objects.order_by('-total_likes')
+    if not request.user.is_authenticated:
+        # Logged-out visitors only see staff uploads; members posted theirs
+        # under login-only visibility.
+        most_likes = most_likes.filter(user__is_staff=True)
     paginator = Paginator(most_likes, 9)
     page = request.GET.get('page')
     try:
@@ -99,7 +103,11 @@ def image_list(request):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return render(request,
                       'images/image/list_ajax.html',
-                      {'section': 'images', 'images': most_likes})
+                      {'section': 'images', 'most_liked': most_likes})
+    if not request.user.is_authenticated:
+        return render(request,
+                      'images/image/list.html',
+                      {'section': 'images', 'most_liked': most_likes})
     # get image ranking dictionary
     r = get_redis()
     image_ranking = r.zrange('image_ranking', 0, -1,
