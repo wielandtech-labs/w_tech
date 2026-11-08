@@ -23,6 +23,11 @@ def homelab(request):
     return render(request, 'core/homelab.html')
 
 
+def social(request):
+    """Links to Raphael's profiles elsewhere."""
+    return render(request, 'core/social.html')
+
+
 def contact(request):
     """Contact page view with form handling and email sending."""
     from .forms import ContactForm

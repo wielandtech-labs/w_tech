@@ -420,8 +420,22 @@ ul {
   text-align: center;
 }
 
-.footer-content h3 {
+.footer-center p {
   margin: 0;
+}
+
+.footer-company {
+  font-size: 0.9em;
+}
+
+.footer-links {
+  margin-top: 4px;
+  font-size: 0.85em;
+}
+
+.footer-links a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .weather-icon {

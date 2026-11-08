@@ -24,6 +24,19 @@ class HomepageViewTests(TestCase):
         self.assertContains(response, 'https://wielandtech.com/')
 
 
+class SocialPageTests(TestCase):
+    def test_lists_profiles(self):
+        response = self.client.get(reverse('core:social'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'https://www.linkedin.com/in/raphael-wieland/')
+        self.assertContains(response, 'https://github.com/wielandtech')
+
+    def test_footer_links_to_social_and_contact(self):
+        response = self.client.get(reverse('core:core_home'))
+        self.assertContains(response, f'<a href="{reverse("core:social")}">Social</a>')
+        self.assertContains(response, f'<a href="{reverse("core:contact")}">Contact</a>')
+
+
 class SiteDomainTests(TestCase):
     def test_site_points_at_personal_domain(self):
         # Sitemap and password-reset links are built from this domain.

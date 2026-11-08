@@ -6,7 +6,7 @@ class StaticViewSitemap(Sitemap):
     protocol = 'https'
     changefreq = 'monthly'
     # The homepage first; the rest are public pages worth indexing.
-    pages = ['core:core_home', 'blog:post_list', 'core:homelab', 'core:weather', 'core:contact', 'images:list']
+    pages = ['core:core_home', 'blog:post_list', 'core:homelab', 'core:weather', 'core:contact', 'core:social', 'images:list']
 
     def items(self):
         return self.pages
