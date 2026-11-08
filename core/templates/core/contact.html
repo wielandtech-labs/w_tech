@@ -11,7 +11,7 @@
 <div class="contact-container">
     <div class="contact-header">
         <h1>Get In Touch</h1>
-        <p>Have a question or project in mind? I'd love to hear from you.<br>Send me a message and let's start a conversation.</p>
+        <p>Questions about a post, the homelab, or work?<br>Send me a message. I read everything that gets past reCAPTCHA.</p>
     </div>
 
     <div class="contact-form-container">
@@ -136,7 +136,7 @@ $(document).ready(function() {
                     $messages = $('<div class="messages"></div>');
                     $form.closest('.contact-form-container').prepend($messages);
                 }
-                $messages.html('<div class="alert alert-error">Anti-spam verification not available. Please contact us directly.</div>');
+                $messages.html('<div class="alert alert-error">Anti-spam verification not available. Please try again later.</div>');
             }
         }
         // If token is already present, allow normal submission
