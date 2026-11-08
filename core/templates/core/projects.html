@@ -9,28 +9,22 @@
 
 	<h2 class="secondary">Projects</h2>
 
-	<p class="date float_right">2026</p>
+	<p class="date float_right">2025&ndash;2026</p>
 
-	<p class="job"><a href="https://r12d.ch/" target="_blank">r12d</a> - Django Web Application</p>
+	<p class="job"><a href="https://github.com/wielandtech-labs/w_lab" target="_blank">w/homelab</a> - Kubernetes Homelab</p>
 
 	<p>
-		A paid, privacy-first app for households and small businesses: printable QR stickers and short links that tie physical things to a private inventory.
+		Three Dell OptiPlexes, a GPU worker, and a Synology NAS in my house, running K3s. It started because I wanted Redis for this site and got out of hand from there.
 	</p>
 
 	<ul>
-		<li><strong>Inventory &amp; Stickers:</strong> Nested items with search and GPS, printable QR sticker sheets, and scan-to-set-up for new codes.</li>
-		<li><strong>Privacy by Default:</strong> Photo EXIF/GPS stripped on upload, no third-party trackers, and admin reachable only over the tailnet.</li>
-		<li><strong>Lost &amp; Found:</strong> A public finder form on each sticker that alerts the owner through a per-workspace ntfy topic.</li>
+		<li><strong>GitOps:</strong> Everything deploys from Git through Flux and Helm. Secrets go in as Sealed Secrets, so they can live in the repo too.</li>
+		<li><strong>Getting traffic in:</strong> Public requests hit a $5 DigitalOcean droplet and travel over WireGuard to Traefik in the cluster. My router has zero inbound ports open.</li>
+		<li><strong>Storage:</strong> MetalLB for load balancers, and the Synology serves iSCSI and NFS volumes to the cluster.</li>
+		<li><strong>Monitoring:</strong> Prometheus, Grafana, and Alertmanager. The <a href="{% url 'core:homelab' %}">Homelab page</a> shows live cluster metrics from Prometheus, refreshed every 30 seconds.</li>
+		<li><strong>Data:</strong> CloudNativePG runs Postgres with nightly snapshots. Plex, Home Assistant, and n8n run alongside everything else.</li>
 	</ul>
-	<br>
-
-	<p class="date float_right">2026</p>
-
-	<p class="job"><a href="https://pisspooridea.lol/" target="_blank">Piss Poor Idea</a> - Django Web Application</p>
-
-	<p>
-		A restroom QR ad network: venues sign up, QR codes go up in their bathrooms, patrons scan, and ad revenue is split across venues by traffic.
-	</p>
+	<p>It stayed up through the October 2025 AWS outage. It is also more expensive and less reliable than the cloud.</p>
 	<br>
 
 	<p class="date float_right">2021&ndash;2026</p>
@@ -38,65 +32,54 @@
 	<p class="job"><a href="https://warnindex.com/" target="_blank">WARN Index</a> - Python Application</p>
 
 	<p>
-		Built a public dashboard that scrapes, enriches, and tracks Worker Adjustment and Retraining Notification (WARN) layoff and closure notices across US states &mdash; an AI-assisted rebuild of the original 2021 spreadsheet-based scraper.
+		A public dashboard of WARN notices, the layoff and closure filings US states require from employers. It rebuilds a spreadsheet scraper I wrote in 2021, this time with AI help.
 	</p>
 
 	<ul>
-		<li><strong>Resilient Scraping Pipeline:</strong> A fetch/parse split saves a replayable snapshot on every failure, so a broken state parser can be reproduced and repaired quickly when a state site reformats.</li>
-		<li><strong>LLM-Powered Enrichment:</strong> A Claude-driven agent enriches each company via web search and free public sources, surfacing affected workers roughly 60 days before layoff.</li>
-		<li><strong>API &amp; Dashboard:</strong> FastAPI read-only API with a bundled single-page frontend for browsing and filtering notices, plus CSV/spreadsheet export.</li>
-		<li><strong>Production Deployment:</strong> Runs as a K3s CronJob with CloudNativePG-backed Postgres, deployed via Helm and Flux GitOps.</li>
+		<li><strong>Scraping:</strong> Fetching and parsing are separate steps, and every failure saves a snapshot I can replay. When a state redesigns its site, I can reproduce the broken parse and fix it quickly.</li>
+		<li><strong>Enrichment:</strong> A Claude agent looks up each company with web search and free public sources. Notices usually land about 60 days before the layoff, so that is the lead time affected workers get.</li>
+		<li><strong>API and dashboard:</strong> A read-only FastAPI API with a small single-page frontend for filtering notices, plus CSV export.</li>
+		<li><strong>Deployment:</strong> Runs as a K3s CronJob on the homelab, with Postgres on CloudNativePG, deployed through Helm and Flux.</li>
 	</ul>
 	<br>
 
-	<p class="date float_right">2025</p>
+	<p class="date float_right">2026</p>
 
-	<p class="job"><a href="https://github.com/wielandtech-labs/w_lab" target="_blank">w/homelab</a> - Kubernetes Homelab</p>
+	<p class="job"><a href="https://r12d.ch/" target="_blank">r12d</a> - Django Web Application</p>
 
 	<p>
-		Built a production-grade Kubernetes homelab using GitOps principles with automated deployment and configuration management.
+		QR stickers and short links that tie physical things to a private inventory, for households and small businesses. Scanning one doesn't feed anyone's ad profile.
 	</p>
 
 	<ul>
-		<li><strong>GitOps Infrastructure:</strong> Flux v2 for automated deployments, K3s cluster, Helm package management, and sealed secrets for encrypted configuration.</li>
-		<li><strong>Networking & Storage:</strong> MetalLB LoadBalancer implementation, Traefik ingress controller, Synology NAS integration with iSCSI and NFS storage classes.</li>
-		<li><strong>Monitoring Stack:</strong> Prometheus for metrics collection, Grafana dashboards, AlertManager for alert routing, Blackbox Exporter for endpoint monitoring, and Netdata for real-time AI-powered troubleshooting.</li>
-		<li><strong>Media & Automation:</strong> Plex media server with hardware transcoding, Transmission BitTorrent client, media management suite (Radarr, Sonarr, Lidarr, Bazarr), Home Assistant, and n8n workflow automation.</li>
-		<li><strong>Production Database:</strong> CloudNativePG operator managing high-availability PostgreSQL clusters with automated backups and rolling updates.</li>
+		<li><strong>Inventory and stickers:</strong> Nested items with search and GPS, printable QR sticker sheets, and scan-to-set-up for new codes.</li>
+		<li><strong>Privacy:</strong> Photo EXIF and GPS data are stripped on upload, there are no third-party trackers, and the admin is reachable only over a private network.</li>
+		<li><strong>Lost and found:</strong> Each sticker has a public finder form that alerts the owner through ntfy.</li>
 	</ul>
 	<br>
 
-	<p class="date float_right">2025</p>
+	<p class="date float_right">2026</p>
 
-	<p class="job"><a href="./images" target="_self">w/images</a> - Django Web Application</p>
+	<p class="job"><a href="https://pisspooridea.lol/" target="_blank">Restroom QR ad network</a> - Django Web Application</p>
 
 	<p>
-		Built a feature-rich photo gallery platform with user authentication and social features using Django framework.
+		Venues sign up, QR codes go up in their restrooms, patrons scan them, and ad revenue is split across venues by traffic.
 	</p>
-
-	<ul>
-        <li><strong>Authentication & Profiles:</strong> Custom user auth system with social login support (Google, Facebook), user profiles, and account settings.</li>
-        <li><strong>Social Activity Feed:</strong> Activity tracking for likes, comments, and interactions using an action stream model.</li>
-        <li><strong>Photo Gallery:</strong> Optimized image uploading, thumbnail generation, and Redis-backed caching for fast delivery.</li>
-        <li><strong>Responsive & Themed UI:</strong> Clean, mobile-friendly UI with dark mode toggle and accessible layout.</li>
-        <li><strong>DevOps:</strong> Dockerized deployment with Gunicorn, Nginx, PostgreSQL, and Redis; CI/CD with GitHub Actions.</li>
-    </ul>
 	<br>
 
-	<p class="date float_right">2025</p>
+	<p class="date float_right">2025&ndash;2026</p>
 
-	<p class="job"><a href="./blog" target="_self">w/blog</a> - Django Web Application</p>
+	<p class="job"><a href="https://github.com/wielandtech-labs/w_tech" target="_blank">This site</a> - Django Web Application</p>
 
 	<p>
-		Developed a full-featured blog platform using the Django framework, designed to support dynamic and scalable content management.
+		A Django rewrite of my old portfolio. It moved from cPanel shared hosting to a VPS and then home to the homelab.
 	</p>
 
 	<ul>
-        <li><strong>Content Tagging:</strong> Implemented a flexible tagging system that allowed posts to be categorized and filtered using user-defined tags, improving content discoverability and engagement.</li>
-        <li><strong>Full-Text Search with PostgreSQL:</strong> Integrated PostgreSQL’s full-text search capabilities to enable efficient and accurate search functionality across blog posts, including ranking and highlighting of search results.</li>
-		<li><strong>RSS Feed Generation:</strong> Built a dynamic RSS feed generator to syndicate content, automatically updating with new blog posts and supporting filtering by tag or category.</li>
-		<li><strong>Admin and Author Workflows:</strong> Leveraged Django’s admin interface for content moderation and editorial workflows, enhancing usability for non-technical content creators.</li>
-		<li><strong>Clean, Responsive UI:</strong> Developed a responsive front-end using HTML, CSS, and Django templates, ensuring a smooth reading experience across devices.</li>
+		<li><strong><a href="{% url 'blog:post_list' %}">Blog</a>:</strong> Tags, PostgreSQL full-text search, an RSS feed, and Django admin for writing.</li>
+		<li><strong><a href="{% url 'images:list' %}">Photo gallery</a>:</strong> Uploads, thumbnails, and Redis-backed rankings. Likes, comments, and the activity feed sit behind a login (email, Google, or Facebook).</li>
+		<li><strong>Spam:</strong> Invisible reCAPTCHA v3 on the sign-up and contact forms. I haven't had a fake account since.</li>
+		<li><strong>Extras:</strong> A dark mode toggle, live cluster metrics, and a weather page fed by my weather station through Home Assistant.</li>
 	</ul>
 	<br>
 
@@ -104,13 +87,12 @@
 
 	<p class="job"><a href="https://www.tricitiesartistincubator.com/" target="_blank">Tri-Cities Artist Incubator (DEFUNCT)</a> - Website</p>
 
-	<p>Co-founded a fab-lab and co-working space focused on artistic endeavors.</p>
+	<p>Co-founded a fab lab and co-working space for artists.</p>
 
 	<ul>
-		<li>Met with client to develop requirement specifications.</li>
-		<li>Designed, built, and hosted company website according to specifications.</li>
-		<li>Set up Google Workspace (including groups, aliases, and shared drives.)</li>
-		<li>Built the co-working space&#39;s scheduling system with Google Calendar integration.</li>
-		<li><a href="https://www.yahoo.com/news/30-artists-featured-incubator-opening-180200155.html" target="_blank">Featured in the Grand Haven Tribune</a> covering the grand opening with 30 artists.</li>
+		<li>Gathered the requirements, then designed, built, and hosted the website.</li>
+		<li>Set up Google Workspace with groups, aliases, and shared drives.</li>
+		<li>Built the co-working space&#39;s scheduling system on Google Calendar.</li>
+		<li>Opened with 30 artists, and the <a href="https://www.yahoo.com/news/30-artists-featured-incubator-opening-180200155.html" target="_blank">Grand Haven Tribune covered it</a>.</li>
 	</ul>
 </div>
