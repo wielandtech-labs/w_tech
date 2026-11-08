@@ -71,3 +71,71 @@ class ImageViewTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+
+class PublicImageListTests(TestCase):
+    def setUp(self):
+        staff = User.objects.create_user(username='staff', password='pass', is_staff=True)
+        self.member = User.objects.create_user(username='member', password='pass')
+        self.staff_image = Image.objects.create(user=staff, title='Staff Photo', url='http://example.com/a.jpg', image='a.jpg')
+        self.member_image = Image.objects.create(user=self.member, title='Member Photo', url='http://example.com/b.jpg', image='b.jpg')
+
+    def test_logged_out_list_shows_only_staff_images(self):
+        response = self.client.get(reverse('images:list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['most_liked']), [self.staff_image])
+        self.assertContains(response, 'Staff Photo')
+        self.assertNotContains(response, 'Member Photo')
+        self.assertContains(response, 'Log in to like and comment')
+        self.assertContains(response, '/account/login/?next=/images/')
+        self.assertNotContains(response, self.staff_image.get_absolute_url())
+
+    def test_logged_out_list_hides_inactive_staff_images(self):
+        former = User.objects.create_user(username='former', password='pass', is_staff=True, is_active=False)
+        Image.objects.create(user=former, title='Former Photo', url='http://example.com/c.jpg', image='c.jpg')
+        response = self.client.get(reverse('images:list'))
+        self.assertNotContains(response, 'Former Photo')
+
+    def test_logged_out_ajax_page_shows_only_staff_images(self):
+        response = self.client.get(reverse('images:list'), {'page': 1},
+                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Staff Photo')
+        self.assertNotContains(response, 'Member Photo')
+        empty = self.client.get(reverse('images:list'), {'page': 2},
+                                HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(empty.content, b'')
+
+    def test_logged_in_list_shows_all_images(self):
+        self.client.force_login(self.member)
+        with patch('images.views.get_redis') as mock_redis:
+            mock_redis.return_value.zrange.return_value = []
+            response = self.client.get(reverse('images:list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Staff Photo')
+        self.assertContains(response, 'Member Photo')
+        self.assertNotContains(response, 'Log in to like and comment')
+
+    def test_logged_in_list_survives_redis_outage(self):
+        self.client.force_login(self.member)
+        with patch('images.views.get_redis', return_value=None):
+            response = self.client.get(reverse('images:list'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_protected_views_redirect_logged_out(self):
+        urls = [
+            reverse('images:detail', args=[self.staff_image.id, self.staff_image.slug]),
+            reverse('images:upload'),
+            reverse('images:create'),
+            reverse('images:ranking'),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(response.url.startswith('/account/login/'))
+        response = self.client.post(reverse('images:like'), {'id': self.staff_image.id, 'action': 'like'},
+                                    HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/account/login/'))
+        self.assertFalse(self.staff_image.users_like.exists())

@@ -40,6 +40,7 @@ def image_create(request):
                    'form': form})
 
 
+@login_required
 def image_detail(request, id, slug):
     image = get_object_or_404(Image, id=id, slug=slug)
     # increment total image views by 1
@@ -79,9 +80,14 @@ def image_like(request):
     return JsonResponse({'status': 'error'})
 
 
-@login_required
 def image_list(request):
-    most_likes = Image.objects.order_by('-total_likes')
+    # '-id' breaks total_likes ties so paginated pages don't overlap.
+    most_likes = Image.objects.order_by('-total_likes', '-id')
+    if not request.user.is_authenticated:
+        # Logged-out visitors only see staff uploads; members posted theirs
+        # under login-only visibility.
+        most_likes = most_likes.filter(user__is_active=True,
+                                       user__is_staff=True)
     paginator = Paginator(most_likes, 9)
     page = request.GET.get('page')
     try:
@@ -99,16 +105,20 @@ def image_list(request):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return render(request,
                       'images/image/list_ajax.html',
-                      {'section': 'images', 'images': most_likes})
-    # get image ranking dictionary
-    r = get_redis()
-    image_ranking = r.zrange('image_ranking', 0, -1,
-                             desc=True)[:5]
-    image_ranking_ids = [int(id) for id in image_ranking]
-    # get most viewed images
-    most_viewed = list(Image.objects.filter(
-        id__in=image_ranking_ids))
-    most_viewed.sort(key=lambda x: image_ranking_ids.index(x.id))
+                      {'section': 'images', 'most_liked': most_likes})
+    most_viewed = []
+    r = get_redis() if request.user.is_authenticated else None
+    if r is not None:
+        try:
+            image_ranking = r.zrange('image_ranking', 0, -1, desc=True)[:5]
+        except redis.RedisError as e:
+            logger.error(f"Redis error in image_list: {e}")
+            image_ranking = []
+        image_ranking_ids = [int(id) for id in image_ranking]
+        # get most viewed images
+        most_viewed = list(Image.objects.filter(
+            id__in=image_ranking_ids))
+        most_viewed.sort(key=lambda x: image_ranking_ids.index(x.id))
     return render(request,
                   'images/image/list.html',
                   {
