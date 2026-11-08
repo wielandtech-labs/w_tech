@@ -2,6 +2,9 @@
 {% load static %}
 
 {% block title %}Weather Station | WielandTech{% endblock %}
+{% block meta_description %}Live readings and history from Raphael Wieland's home weather station: temperature, wind, humidity and pressure.{% endblock %}
+{% block og_title %}Weather Station | WielandTech{% endblock %}
+{% block og_description %}Live readings from a home weather station.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/weather.css' %}">
@@ -22,7 +25,19 @@
     <div class="weather-section">
         <div class="section-header">
             <h2>Current Conditions</h2>
-            <span class="update-time" id="update-time">--</span>
+            <span class="update-time" id="update-time"></span>
+        </div>
+        <div class="stat-tiles">
+            <div class="stat-tile">
+                <div class="stat-label">Temperature</div>
+                <div class="stat-value"><span id="stat-temp">--</span><span class="stat-unit">°F</span></div>
+                <div class="stat-detail" id="stat-temp-detail">&nbsp;</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Wind</div>
+                <div class="stat-value"><span id="stat-wind">--</span><span class="stat-unit">mph</span></div>
+                <div class="stat-detail" id="stat-wind-detail">&nbsp;</div>
+            </div>
         </div>
         <div id="current-conditions">
             <div class="conditions-loading">Loading weather data...</div>

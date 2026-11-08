@@ -56,6 +56,129 @@
     color: var(--blog-text);
 }
 
+#sidebar h2 a {
+    color: var(--blog-text);
+    text-decoration: none;
+}
+
+/* Search box + RSS link share the top row of the sidebar */
+.sidebar-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.sidebar-search .search-form {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 0.25rem;
+    margin: 0;
+}
+
+.sidebar-search .search-form input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--blog-border);
+    border-radius: 999px;
+    background-color: var(--background-primary);
+    color: var(--blog-text);
+}
+
+.sidebar-search .search-form input[type="submit"] {
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    background-color: var(--accent-primary);
+    color: var(--nav-text);
+}
+
+.sidebar-search .search-form input[type="submit"]:hover {
+    background-color: var(--blog-link-hover);
+}
+
+.rss-link {
+    flex-shrink: 0;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    background-color: var(--highlight);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.rss-link:hover {
+    color: var(--text-primary);
+    opacity: 0.85;
+}
+
+/* Blog index cards */
+.post-card {
+    margin-bottom: 1.25rem;
+    border-radius: 8px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.post-card:hover {
+    border-color: var(--accent-primary);
+}
+
+.post-card-title {
+    margin: 0 0 0.25rem;
+    font-size: 1.35rem;
+    line-height: 1.3;
+}
+
+.post-card-title a {
+    color: var(--blog-text);
+    text-decoration: none;
+}
+
+.post-card-title a:hover {
+    color: var(--blog-link);
+}
+
+.post-card-meta {
+    margin: 0 0 0.75rem;
+    color: var(--blog-meta);
+    font-size: 0.85rem;
+}
+
+.post-card-excerpt {
+    margin: 0.75rem 0 0;
+    color: var(--blog-text);
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.post-card .post-actions {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.post-card .post-actions > a:first-child {
+    color: var(--blog-link);
+    font-weight: 600;
+}
+
+/* Tag pills */
+.tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
 /* Comment form styling */
 #comment-form {
     margin: 2em 0;
@@ -234,6 +357,7 @@
     }
 
     #sidebar {
+        max-width: none;
         border-left: none;
         border-top: 1px solid var(--blog-border);
         margin-top: 2rem;

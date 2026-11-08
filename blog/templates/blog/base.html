@@ -29,13 +29,13 @@
             {% endblock %}
         </div>
         <div id="sidebar">
-            <h2><a href="{% url "blog:post_list" %}">WielandTech Blog</a></h2>
-            {% include "blog/post/search_form.html" %}
+            <div class="sidebar-search">
+                {% include "blog/post/search_form.html" %}
+                <a class="rss-link" href="{% url "blog:post_feed" %}" title="Subscribe via RSS">RSS</a>
+            </div>
+            <h2><a href="{% url "blog:post_list" %}">Blog</a></h2>
             <p>This is where I write about life, technology, and the intersection thereof.<br>I've written
                 {% total_posts %} posts so far.</p>
-            <p>
-                <a href="{% url "blog:post_feed" %}">Subscribe to my RSS feed</a>
-            </p>
             <h3>Latest posts</h3>
             {% show_latest_posts 3 %}
             <h3>Most commented posts</h3>

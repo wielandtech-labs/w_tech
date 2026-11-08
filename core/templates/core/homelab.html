@@ -2,6 +2,9 @@
 {% load static %}
 
 {% block title %}Homelab | WielandTech{% endblock %}
+{% block meta_description %}Live metrics from Raphael Wieland's self-hosted Kubernetes homelab: request rates, latency, errors and saturation across the cluster.{% endblock %}
+{% block og_title %}Homelab | WielandTech{% endblock %}
+{% block og_description %}Live golden signals from a self-hosted Kubernetes homelab.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/homelab.css' %}">
@@ -11,7 +14,7 @@
 <div class="homelab-container">
     <div class="homelab-header">
         <h1>Homelab Dashboard</h1>
-        <p>My Kubernetes homelab: more expensive and less reliable than the cloud, but way more fun!</p>
+        <p>My Kubernetes homelab. More expensive and less reliable than the cloud, but more fun.</p>
     </div>
 
     <div class="homelab-section">
@@ -24,7 +27,7 @@
                 wielandtech-labs/w_lab
             </a>
         </div>
-        <p>Real-time monitoring of my 3-node K3s cluster running on bare metal. Metrics are pulled directly from Netdata agents.</p>
+        <p>Live metrics from my K3s cluster (three bare-metal OptiPlex nodes plus a GPU worker), queried from Prometheus and refreshed every 30 seconds.</p>
         <div class="metrics-container" id="metrics-container">
             <div id="metrics-content">
                 <div class="metrics-loading">Loading metrics...</div>
@@ -34,7 +37,7 @@
 
     <div class="homelab-section">
         <h2>Software Stack</h2>
-        <p>This homelab runs a complete Kubernetes infrastructure with GitOps automation.</p>
+        <p>What runs on it. Everything is deployed from Git by Flux.</p>
         <div class="stack-grid">
             <div class="stack-card">
                 <div class="stack-title">Kubernetes</div>
@@ -79,7 +82,7 @@
             <div class="stack-card">
                 <div class="stack-title">Monitoring</div>
                 <div class="stack-tech">Prometheus + Grafana + Netdata</div>
-                <div class="stack-desc">Metrics, visualization, AI troubleshooting</div>
+                <div class="stack-desc">Metrics, dashboards, live node stats</div>
             </div>
             <div class="stack-card">
                 <div class="stack-title">Automation</div>

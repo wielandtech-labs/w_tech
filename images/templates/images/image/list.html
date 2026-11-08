@@ -2,13 +2,20 @@
 {% block title %}Photo Gallery | WielandTech{% endblock %}
 {% block images_content %}
     <div class="image-list-header">
-        <h1>Shared Images</h1>
+        <h1>{% if user.is_authenticated %}Shared Images{% else %}Photography{% endif %}</h1>
     </div>
+
+    {% if not user.is_authenticated %}
+    <a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}" class="login-cta-bar">
+        Log in to like and comment
+    </a>
+    {% endif %}
 
     <div id="image-list" class="image-grid">
         {% include "images/image/list_ajax.html" %}
     </div>
 
+    {% if user.is_authenticated %}
     <div class="most-viewed-posts">
     <p>Most Viewed Images</p>
         <ol>
@@ -25,6 +32,7 @@
     <div class="upload-button-wrapper">
         <a href="{% url 'images:upload' %}" class="upload-button button">Upload Image</a>
     </div>
+    {% endif %}
 {% endblock %}
 
 {% block domready %}

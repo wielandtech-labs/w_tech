@@ -1,4 +1,7 @@
-from django.test import TestCase, Client
+import unittest
+
+from django.db import connection
+from django.test import TestCase, Client, override_settings
 from django.contrib.auth.models import User
 from django.urls import reverse
 from .models import Post, Comment
@@ -85,6 +88,8 @@ class BlogViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTemplateUsed(resp, 'blog/post/detail.html')
 
+    @unittest.skipIf(connection.vendor == 'sqlite',
+                     'post_search uses Postgres full-text search (SearchRank/ts_rank)')
     def test_post_search_view(self):
         resp = self.client.get(reverse('blog:post_search'), {'query': 'Sample'})
         self.assertEqual(resp.status_code, 200)
@@ -135,3 +140,55 @@ class BlogTemplateTagTests(TestCase):
         from .templatetags.blog_tags import markdown_format
         html = markdown_format('Use `pip install` to install.')
         self.assertIn('<code>pip install</code>', html)
+
+
+@override_settings(ALLOWED_HOSTS=["raphaelwieland.com", "testserver"])
+class BlogSeoTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='seo', password='x')
+        self.post = Post.objects.create(
+            title='Exposing </script> my homelab', slug='exposing', author=self.user,
+            body='# Heading\n\nWireGuard tunnels **make** remote access easy. ' + 'word ' * 60
+                 + '\n\n```\ncode block\n```',
+            status=Post.Status.PUBLISHED,
+        )
+        self.post.tags.add('homelab')
+
+    def test_detail_has_description_og_article_and_safe_jsonld(self):
+        import json
+        import re
+
+        html = self.client.get(self.post.get_absolute_url(), HTTP_HOST='raphaelwieland.com').content.decode()
+        desc = re.search(r'<meta name="description" content="([^"]*)"', html).group(1)
+        self.assertTrue(desc.startswith('WireGuard tunnels make remote access easy.'))
+        self.assertLessEqual(len(desc), 160)
+        self.assertNotIn('Heading', desc)
+        self.assertIn('<meta property="og:type" content="article">', html)
+        self.assertIn('article:published_time', html)
+        blob = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1)
+        self.assertNotIn('</script>', blob)
+        data = json.loads(blob)
+        self.assertEqual(data['@type'], 'BlogPosting')
+        self.assertEqual(data['headline'], 'Exposing </script> my homelab')
+        self.assertEqual(data['keywords'], ['homelab'])
+
+    def test_plain_summary_short_text_untouched(self):
+        from blog.templatetags.blog_tags import plain_summary
+
+        self.assertEqual(plain_summary('Hello *world*.'), 'Hello world.')
+
+    def test_plain_summary_unescapes_entities(self):
+        from blog.templatetags.blog_tags import plain_summary
+
+        # Autoescape runs on output; the filter must not pre-escape "&".
+        self.assertEqual(plain_summary('Tom & Jerry'), 'Tom & Jerry')
+
+    def test_reading_time(self):
+        from blog.templatetags.blog_tags import reading_time
+
+        self.assertEqual(reading_time(''), 1)
+        self.assertEqual(reading_time(None), 1)
+        self.assertEqual(reading_time('word ' * 50), 1)
+        self.assertEqual(reading_time('word ' * 200), 1)
+        self.assertEqual(reading_time('word ' * 201), 2)
+        self.assertEqual(reading_time('word ' * 800), 4)

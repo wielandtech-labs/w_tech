@@ -3,6 +3,7 @@ from .models import Post
 
 
 class PostSitemap(Sitemap):
+    protocol = 'https'
     changefreq = 'weekly'
     priority = 0.9
 
