@@ -666,10 +666,54 @@ def get_cardinal_direction(degrees):
     return directions[index]
 
 
+# Weather station series in Prometheus (Home Assistant exporter). Home Assistant
+# pod restarts start a new series per pod (pod/instance labels change), so
+# queries must not assume a single, continuous series.
+WEATHER_TEMP_SERIES = 'homeassistant_sensor_temperature_celsius{entity="sensor.norton_shores_weather_station_temperature"}'
+WEATHER_WIND_SPEED_SERIES = 'homeassistant_sensor_wind_speed_mph{entity="sensor.norton_shores_weather_station_wind_speed"}'
+# Note: u0xb0 is the encoded degree symbol.
+WEATHER_WIND_DIR_SERIES = 'homeassistant_sensor_wind_direction_u0xb0{entity="sensor.norton_shores_weather_station_wind_direction"}'
+WEATHER_HUMIDITY_SERIES = 'homeassistant_sensor_humidity_percent{entity="sensor.norton_shores_weather_station_humidity"}'
+WEATHER_PRESSURE_SERIES = 'homeassistant_sensor_pressure_inhg{entity="sensor.norton_shores_weather_station_relative_pressure"}'
+WEATHER_UV_SERIES = 'homeassistant_sensor_unit_index{entity="sensor.norton_shores_weather_station_uv_index"}'
+WEATHER_RAIN_SERIES = 'homeassistant_sensor_precipitation_in{entity="sensor.norton_shores_weather_station_daily_rain"}'
+
+
+def _latest_sample(prometheus_url, selector, timeout, window='1h'):
+    """
+    Return (unix_ts, value) of the newest raw sample of `selector` within
+    `window`, across every series it matches, or None if there is none.
+
+    A plain instant query returns nothing during a Home Assistant rollover
+    (the old pod's series is marked stale before the new pod reports), which
+    is what made the current-conditions card fail while the charts still had
+    data.
+    """
+    response = requests.get(
+        f"{prometheus_url}/api/v1/query",
+        params={'query': f'{selector}[{window}]'},
+        timeout=timeout
+    )
+    if response.status_code != 200:
+        return None
+    data = response.json()
+    if data.get('status') != 'success':
+        return None
+    latest = None
+    for series in data.get('data', {}).get('result', []):
+        values = series.get('values') or []
+        if values:
+            ts, value = values[-1]
+            if latest is None or float(ts) > latest[0]:
+                latest = (float(ts), float(value))
+    return latest
+
+
 def get_weather_data(request):
     """
-    Fetch weather data from Prometheus (Home Assistant metrics).
-    Queries the Norton Shores weather station for all available metrics.
+    Fetch the latest weather station reading from Prometheus (Home Assistant
+    metrics). Reports `as_of` (unix time of the temperature reading) and
+    status 'no_data' when there was no reading in the last hour.
     Implements caching to reduce API calls (1 minute TTL).
     """
     cached_weather = cache.get('weather_data')
@@ -680,147 +724,58 @@ def get_weather_data(request):
     try:
         prometheus_url = "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090"
         timeout = 5
-        
+
+        temp = _latest_sample(prometheus_url, WEATHER_TEMP_SERIES, timeout)
+        if temp is None:
+            logger.warning("No weather reading in Prometheus in the last hour")
+            return JsonResponse({'status': 'no_data'})
+
+        as_of, temp_celsius = temp
         weather = {
             'status': 'ok',
             'cache_hit': False,
-            'available_metrics': []
+            'as_of': int(as_of),
+            'temperature_c': round(temp_celsius, 1),
+            'temperature_f': round((temp_celsius * 9/5) + 32, 1),
+            'available_metrics': ['temperature'],
         }
 
-        # Query temperature
-        temp_query = 'homeassistant_sensor_temperature_celsius{entity="sensor.norton_shores_weather_station_temperature"}'
-        temp_response = requests.get(
-            f"{prometheus_url}/api/v1/query",
-            params={'query': temp_query},
-            timeout=timeout
-        )
+        wind_speed = _latest_sample(prometheus_url, WEATHER_WIND_SPEED_SERIES, timeout)
+        if wind_speed:
+            weather['wind_speed_mph'] = round(wind_speed[1], 1)
+            weather['available_metrics'].append('wind_speed')
 
-        if temp_response.status_code == 200:
-            data = temp_response.json()
-            if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                temp_celsius = float(data['data']['result'][0]['value'][1])
-                weather['temperature_c'] = round(temp_celsius, 1)
-                weather['temperature_f'] = round((temp_celsius * 9/5) + 32, 1)
-                weather['available_metrics'].append('temperature')
+        wind_dir = _latest_sample(prometheus_url, WEATHER_WIND_DIR_SERIES, timeout)
+        if wind_dir:
+            wind_direction = round(wind_dir[1])
+            weather['wind_direction'] = wind_direction
+            weather['wind_direction_cardinal'] = get_cardinal_direction(wind_direction)
+            weather['available_metrics'].append('wind_direction')
 
-        # Query wind speed
-        wind_speed_query = 'homeassistant_sensor_wind_speed_mph{entity="sensor.norton_shores_weather_station_wind_speed"}'
-        wind_speed_response = requests.get(
-            f"{prometheus_url}/api/v1/query",
-            params={'query': wind_speed_query},
-            timeout=timeout
-        )
+        humidity = _latest_sample(prometheus_url, WEATHER_HUMIDITY_SERIES, timeout)
+        if humidity:
+            weather['humidity'] = round(humidity[1], 1)
+            weather['available_metrics'].append('humidity')
 
-        if wind_speed_response.status_code == 200:
-            data = wind_speed_response.json()
-            if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                weather['wind_speed_mph'] = round(float(data['data']['result'][0]['value'][1]), 1)
-                weather['available_metrics'].append('wind_speed')
+        pressure = _latest_sample(prometheus_url, WEATHER_PRESSURE_SERIES, timeout)
+        if pressure:
+            weather['pressure_inhg'] = round(pressure[1], 2)
+            weather['pressure_hpa'] = round(pressure[1] * 33.8639, 1)
+            weather['available_metrics'].append('pressure')
 
-        # Query wind direction (note: u0xb0 is the encoded degree symbol)
-        wind_dir_query = 'homeassistant_sensor_wind_direction_u0xb0{entity="sensor.norton_shores_weather_station_wind_direction"}'
-        wind_dir_response = requests.get(
-            f"{prometheus_url}/api/v1/query",
-            params={'query': wind_dir_query},
-            timeout=timeout
-        )
+        uv = _latest_sample(prometheus_url, WEATHER_UV_SERIES, timeout)
+        if uv:
+            weather['uv_index'] = round(uv[1], 1)
+            weather['available_metrics'].append('uv_index')
 
-        if wind_dir_response.status_code == 200:
-            data = wind_dir_response.json()
-            if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                wind_direction = round(float(data['data']['result'][0]['value'][1]))
-                weather['wind_direction'] = wind_direction
-                weather['wind_direction_cardinal'] = get_cardinal_direction(wind_direction)
-                weather['available_metrics'].append('wind_direction')
+        rain = _latest_sample(prometheus_url, WEATHER_RAIN_SERIES, timeout)
+        if rain:
+            weather['precipitation'] = round(rain[1], 2)
+            weather['available_metrics'].append('precipitation')
 
-        # Query humidity (try common patterns)
-        humidity_queries = [
-            'homeassistant_sensor_humidity_percent{entity="sensor.norton_shores_weather_station_humidity"}',
-            'homeassistant_sensor_humidity_percent{entity=~"sensor.norton_shores.*humidity.*"}',
-        ]
-        for humidity_query in humidity_queries:
-            humidity_response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': humidity_query},
-                timeout=timeout
-            )
-            if humidity_response.status_code == 200:
-                data = humidity_response.json()
-                if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                    weather['humidity'] = round(float(data['data']['result'][0]['value'][1]), 1)
-                    weather['available_metrics'].append('humidity')
-                    break
-
-        # Query pressure (try common patterns)
-        pressure_queries = [
-            'homeassistant_sensor_pressure_hpa{entity="sensor.norton_shores_weather_station_pressure"}',
-            'homeassistant_sensor_pressure_hpa{entity=~"sensor.norton_shores.*pressure.*"}',
-            'homeassistant_sensor_pressure_inhg{entity=~"sensor.norton_shores.*pressure.*"}',
-        ]
-        for pressure_query in pressure_queries:
-            pressure_response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': pressure_query},
-                timeout=timeout
-            )
-            if pressure_response.status_code == 200:
-                data = pressure_response.json()
-                if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                    pressure_val = float(data['data']['result'][0]['value'][1])
-                    # Check if it's in inHg (values typically 28-32) and convert to hPa
-                    if pressure_val < 50:
-                        weather['pressure_inhg'] = round(pressure_val, 2)
-                        weather['pressure_hpa'] = round(pressure_val * 33.8639, 1)
-                    else:
-                        weather['pressure_hpa'] = round(pressure_val, 1)
-                        weather['pressure_inhg'] = round(pressure_val / 33.8639, 2)
-                    weather['available_metrics'].append('pressure')
-                    break
-
-        # Query UV index
-        uv_queries = [
-            'homeassistant_sensor_uv_index{entity="sensor.norton_shores_weather_station_uv_index"}',
-            'homeassistant_sensor_uv_index{entity=~"sensor.norton_shores.*uv.*"}',
-        ]
-        for uv_query in uv_queries:
-            uv_response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': uv_query},
-                timeout=timeout
-            )
-            if uv_response.status_code == 200:
-                data = uv_response.json()
-                if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                    weather['uv_index'] = round(float(data['data']['result'][0]['value'][1]), 1)
-                    weather['available_metrics'].append('uv_index')
-                    break
-
-        # Query precipitation/rain
-        rain_queries = [
-            'homeassistant_sensor_precipitation_mm{entity=~"sensor.norton_shores.*rain.*"}',
-            'homeassistant_sensor_precipitation_in{entity=~"sensor.norton_shores.*rain.*"}',
-        ]
-        for rain_query in rain_queries:
-            rain_response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={'query': rain_query},
-                timeout=timeout
-            )
-            if rain_response.status_code == 200:
-                data = rain_response.json()
-                if data.get('status') == 'success' and data.get('data', {}).get('result'):
-                    weather['precipitation'] = round(float(data['data']['result'][0]['value'][1]), 2)
-                    weather['available_metrics'].append('precipitation')
-                    break
-
-        # Build response if we have at least temperature
-        if 'temperature_c' in weather:
-            cache.set('weather_data', weather, 60)  # 1 minute cache
-            cache.set('weather_data_backup', weather, 3600)  # 1 hour backup
-            return JsonResponse(weather)
-        else:
-            logger.warning("No weather data found in Prometheus response")
-            return JsonResponse({'status': 'error', 'error': 'No data available'})
+        cache.set('weather_data', weather, 60)  # 1 minute cache
+        cache.set('weather_data_backup', weather, 3600)  # 1 hour backup
+        return JsonResponse(weather)
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to connect to Prometheus for weather data: {e}")
@@ -892,8 +847,10 @@ def get_weather_history(request):
         'status': 'ok'
     }
     
-    temp_query = 'homeassistant_sensor_temperature_celsius{entity="sensor.norton_shores_weather_station_temperature"}'
-    wind_query = 'homeassistant_sensor_wind_speed_mph{entity="sensor.norton_shores_weather_station_wind_speed"}'
+    # Aggregate by entity so series from successive Home Assistant pods
+    # merge into one line (query_range results keep only result[0]).
+    temp_query = f'max by (entity) ({WEATHER_TEMP_SERIES})'
+    wind_query = f'max by (entity) ({WEATHER_WIND_SPEED_SERIES})'
     humidity_query = 'homeassistant_sensor_humidity_percent{entity=~"sensor.norton_shores.*humidity.*"}'
     pressure_query = 'homeassistant_sensor_pressure_hpa{entity=~"sensor.norton_shores.*pressure.*"}'
     

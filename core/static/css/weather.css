@@ -65,6 +65,77 @@
     opacity: 0.7;
 }
 
+/* Stat Tiles (same card treatment as the homelab metric cards) */
+.stat-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.stat-tile {
+    background: var(--background-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.25rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--accent-primary);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+}
+
+.stat-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px var(--shadow-color);
+    border-color: var(--accent-primary);
+}
+
+.stat-tile:hover::before {
+    transform: scaleX(1);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.stat-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.stat-unit {
+    font-size: 1.25rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-left: 0.25rem;
+}
+
+.stat-detail {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    margin-top: 0.5rem;
+}
+
 /* Current Conditions Grid */
 .conditions-grid {
     display: grid;
@@ -109,11 +180,6 @@
     transform: scaleX(1);
 }
 
-.condition-card.primary {
-    grid-column: span 2;
-    margin: 0;  /* Override global .primary margin-top from main.css */
-}
-
 .condition-icon {
     font-size: 2rem;
     margin-bottom: 0.5rem;
@@ -136,18 +202,10 @@
     line-height: 1.2;
 }
 
-.condition-card.primary .condition-value {
-    font-size: 3.5rem;
-}
-
 .condition-unit {
     font-size: 1rem;
     font-weight: 400;
     color: var(--text-secondary);
-}
-
-.condition-card.primary .condition-unit {
-    font-size: 1.5rem;
 }
 
 .condition-detail {
@@ -368,14 +426,12 @@
     100% { transform: rotate(360deg); }
 }
 
-.conditions-error {
+.conditions-empty {
     text-align: center;
-    padding: 1.5rem;
-    font-size: 0.85rem;
-    color: var(--accent-secondary);
-    background: rgba(255, 76, 66, 0.1);
-    border: 1px solid rgba(255, 76, 66, 0.2);
-    border-radius: 6px;
+    padding: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
 }
 
 /* Responsive adjustments */
@@ -400,11 +456,7 @@
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .condition-card.primary {
-        grid-column: span 2;
-    }
-
-    .condition-card.primary .condition-value {
+    .stat-value {
         font-size: 2.5rem;
     }
 
@@ -437,16 +489,8 @@
         grid-template-columns: 1fr;
     }
 
-    .condition-card.primary {
-        grid-column: span 1;
-    }
-
     .condition-value {
         font-size: 1.75rem;
-    }
-
-    .condition-card.primary .condition-value {
-        font-size: 2.5rem;
     }
 
     .station-details {
@@ -456,6 +500,7 @@
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
+    .stat-tile,
     .condition-card,
     .chart-wrapper,
     .detail-item {
@@ -469,6 +514,7 @@
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
+    .stat-tile,
     .condition-card,
     .arrow-large,
     .period-btn {
