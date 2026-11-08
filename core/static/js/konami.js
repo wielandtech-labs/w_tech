@@ -14,7 +14,7 @@
             'K3s, Flux v2, Traefik, MetalLB, Synology CSI, cert-manager,',
             'Sealed Secrets, CloudNativePG, Redis, Prometheus, Grafana, Netdata.',
         ].join('\n'),
-        'ursa.txt': 'Ursa: co-founder. Intelligent, hard-working, has a desire for validation.',
+        'ursa.txt': 'Ursa: co-founder. Hard-working, easily bribed with praise.',
         'secrets.sealed': 'AgB3xY9...  Nice try. That is what the sealing is for.',
     };
 
