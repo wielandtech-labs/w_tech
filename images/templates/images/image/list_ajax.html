@@ -1,5 +1,6 @@
 {% load thumbnail %}
 {% for image in most_liked %}
+    {% if user.is_authenticated %}
     <div class="image-card">
         <a href="{{ image.get_absolute_url }}" class="image-link">
             {% thumbnail image.image 300x300 crop="smart" as im %}
@@ -11,6 +12,13 @@
             </a>
         </div>
     </div>
+    {% else %}
+    <figure class="image-card image-card--public">
+        {% thumbnail image.image 300x300 crop="smart" as im %}
+        <img src="{{ im.url }}" alt="" class="image-thumbnail" loading="lazy" />
+        <figcaption class="info">{{ image.title }}</figcaption>
+    </figure>
+    {% endif %}
 {% empty %}
     <div class="empty-state">
         <div class="icon">📷</div>
