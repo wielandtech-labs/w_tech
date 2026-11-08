@@ -92,6 +92,16 @@ jobs:
           type=raw,value=${{ steps.vars.outputs.dev_tag }},enable=${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
           type=raw,value=${{ steps.vars.outputs.pr_tag }},enable=${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     
+    # Gate the image on the test suite. Runs in the remote buildkitd (the
+    # runner has no Docker daemon); a failing test fails this `build` job.
+    - name: Run Django tests
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        target: test
+        push: false
+        outputs: type=cacheonly
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v7
       id: build
