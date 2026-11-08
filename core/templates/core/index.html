@@ -1,6 +1,8 @@
 {% extends 'core/base.html' %}
 
-{% block title %}Welcome to WielandTech{% endblock %}
+{% load seo_tags %}
+{% block title %}Raphael Wieland | WielandTech{% endblock %}
+{% block structured_data %}{% person_jsonld %}{% endblock %}
 
 {% block content %}
 
