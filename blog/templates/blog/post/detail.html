@@ -2,7 +2,19 @@
 {% load blog_tags %}
 {% load static %}
 
-{% block title %}{{ post.title }}{% endblock %}
+{% load seo_tags %}
+{% block title %}{{ post.title }} | WielandTech Blog{% endblock %}
+{% block meta_description %}{{ post.body|plain_summary }}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block og_title %}{{ post.title }}{% endblock %}
+{% block og_description %}{{ post.body|plain_summary }}{% endblock %}
+{% block og_extra %}
+    <meta property="article:published_time" content="{{ post.publish|date:'c' }}">
+    <meta property="article:modified_time" content="{{ post.updated|date:'c' }}">
+    {% for tag in post.tags.all %}<meta property="article:tag" content="{{ tag.name }}">
+    {% endfor %}
+{% endblock %}
+{% block structured_data %}{% post_jsonld post post.body|plain_summary %}{% endblock %}
 
 {% block extra_head %}
 {{ block.super }}

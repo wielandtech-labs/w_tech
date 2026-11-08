@@ -72,31 +72,52 @@ function getChartOptions(yAxisLabel) {
     };
 }
 
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
+// Muted placeholder when there is no recent reading (or the API is unreachable)
+function showNoReading(message) {
+    setText('stat-temp', '--');
+    setText('stat-temp-detail', ' ');
+    setText('stat-wind', '--');
+    setText('stat-wind-detail', ' ');
+    setText('update-time', '');
+    setText('wind-speed-large', '--');
+    setText('wind-cardinal-large', '--');
+    setText('wind-degrees', '--');
+    document.getElementById('current-conditions').innerHTML =
+        `<div class="conditions-empty">${message}</div>`;
+}
+
 // Fetch and display current weather conditions
 function fetchCurrentConditions() {
     fetch('/api/weather/')
         .then(response => response.json())
         .then(data => {
-            if (data.status === 'error') {
-                document.getElementById('current-conditions').innerHTML = 
-                    '<div class="conditions-error">Weather data temporarily unavailable</div>';
+            if (data.temperature_f === undefined) {
+                showNoReading(data.status === 'no_data'
+                    ? 'No reading in the last hour'
+                    : 'Weather data temporarily unavailable');
                 return;
             }
-            
-            let html = '<div class="conditions-grid">';
-            
-            // Temperature (primary card)
-            if (data.temperature_f !== undefined) {
-                html += `
-                    <div class="condition-card primary">
-                        <div class="condition-icon">🌡️</div>
-                        <div class="condition-label">Temperature</div>
-                        <div class="condition-value">${data.temperature_f}<span class="condition-unit">°F</span></div>
-                        <div class="condition-detail">${data.temperature_c}°C</div>
-                    </div>
-                `;
+
+            // Stat tiles
+            setText('stat-temp', data.temperature_f);
+            setText('stat-temp-detail', `${data.temperature_c}°C`);
+            if (data.wind_speed_mph !== undefined) {
+                setText('stat-wind', data.wind_speed_mph);
+                setText('stat-wind-detail', data.wind_direction_cardinal
+                    ? `from ${data.wind_direction_cardinal} (${data.wind_direction}°)`
+                    : ' ');
+            } else {
+                setText('stat-wind', '--');
+                setText('stat-wind-detail', ' ');
             }
-            
+
+            let html = '<div class="conditions-grid">';
+
             // Humidity
             if (data.humidity !== undefined) {
                 html += `
@@ -116,14 +137,6 @@ function fetchCurrentConditions() {
                         <div class="condition-label">Pressure</div>
                         <div class="condition-value">${data.pressure_inhg}<span class="condition-unit"> inHg</span></div>
                         <div class="condition-detail">${data.pressure_hpa} hPa</div>
-                    </div>
-                `;
-            } else if (data.pressure_hpa !== undefined) {
-                html += `
-                    <div class="condition-card">
-                        <div class="condition-icon">📊</div>
-                        <div class="condition-label">Pressure</div>
-                        <div class="condition-value">${data.pressure_hpa}<span class="condition-unit"> hPa</span></div>
                     </div>
                 `;
             }
@@ -150,7 +163,7 @@ function fetchCurrentConditions() {
                 html += `
                     <div class="condition-card">
                         <div class="condition-icon">🌧️</div>
-                        <div class="condition-label">Precipitation</div>
+                        <div class="condition-label">Rain Today</div>
                         <div class="condition-value">${data.precipitation}<span class="condition-unit"> in</span></div>
                     </div>
                 `;
@@ -162,15 +175,15 @@ function fetchCurrentConditions() {
             // Update wind display
             updateWindDisplay(data);
             
-            // Update timestamp
-            const now = new Date();
-            document.getElementById('update-time').textContent = 
-                `Last updated: ${now.toLocaleTimeString()}`;
+            // Time of the reading itself, not of the page refresh
+            if (data.as_of) {
+                const asOf = new Date(data.as_of * 1000);
+                setText('update-time', `as of ${asOf.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+            }
         })
         .catch(error => {
             console.error('Error fetching weather data:', error);
-            document.getElementById('current-conditions').innerHTML = 
-                '<div class="conditions-error">Unable to load weather data</div>';
+            showNoReading('Weather data temporarily unavailable');
         });
 }
 
