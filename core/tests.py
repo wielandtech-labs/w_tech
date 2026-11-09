@@ -4,7 +4,10 @@ from django.core.cache import cache
 from django.test import TestCase, SimpleTestCase, override_settings
 from django.urls import reverse
 from unittest import mock
-from core.views import AVAILABILITY_DAILY_QUERY, CLUSTER_QUERIES
+from core.views import (
+    AVAILABILITY_DAILY_QUERY, CLUSTER_QUERIES, WEATHER_HUMIDITY_SERIES,
+    WEATHER_PRESSURE_SERIES,
+)
 from core.sitemaps import StaticViewSitemap
 from core.redis_client import RedisClient
 
@@ -417,3 +420,13 @@ class WeatherDataViewTests(TestCase):
         mock_get.return_value = _prom_matrix_response([])
         data = self.client.get(reverse('core:weather_data')).json()
         self.assertEqual(data, {'status': 'no_data'})
+
+
+@override_settings(CACHES=LOCMEM_CACHE)
+class WeatherHistoryViewTests(TestCase):
+    @mock.patch('core.views._query_prometheus_range', return_value=[])
+    def test_humidity_and_pressure_use_the_station_series(self, mock_range):
+        self.client.get(reverse('core:weather_history'), {'period': '24h'})
+        queries = [call.args[1] for call in mock_range.call_args_list]
+        self.assertIn(f'max by (entity) ({WEATHER_HUMIDITY_SERIES})', queries)
+        self.assertIn(f'max by (entity) ({WEATHER_PRESSURE_SERIES})', queries)

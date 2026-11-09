@@ -12,7 +12,7 @@
         'about.txt': 'Raphael. Likes adventure, learning, and production systems you can physically trip over.',
         'stack.txt': [
             'K3s, Flux v2, Traefik, MetalLB, Synology CSI, cert-manager,',
-            'Sealed Secrets, CloudNativePG, Redis, Prometheus, Grafana, Netdata.',
+            'Sealed Secrets, CloudNativePG, Redis, Prometheus, Grafana.',
         ].join('\n'),
         'ursa.txt': 'Ursa: co-founder. Hard-working, easily bribed with praise.',
         'secrets.sealed': 'AgB3xY9...  Nice try. That is what the sealing is for.',
@@ -39,7 +39,7 @@
         'Ingress:     Traefik',
         'Storage:     Synology CSI',
         'Database:    CloudNativePG + Redis',
-        'Monitoring:  Prometheus + Grafana + Netdata',
+        'Monitoring:  Prometheus + Grafana',
         'Cost:        more than the cloud',
         'Reliability: less than the cloud',
         'Fun:         way more than the cloud',
