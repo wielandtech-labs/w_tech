@@ -1,0 +1,110 @@
+/* Konami code homelab shell. Always dark, whatever the site theme is. */
+.konami-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(1, 22, 39, 0.7);
+}
+
+.konami-overlay[hidden] {
+  display: none;
+}
+
+.konami-terminal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  height: min(520px, 100%);
+  overflow: hidden;
+  border: 1px solid #35A89C;
+  border-radius: 8px;
+  outline: none;
+  background: #011627;
+  color: #FDFFFC;
+  font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  animation: konami-open 160ms ease-out;
+}
+
+.konami-title {
+  flex: none;
+  padding: 6px 12px;
+  background: #0D2538;
+  color: #35A89C;
+  font-size: 12px;
+  text-align: center;
+}
+
+.konami-output {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 12px 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.konami-echo,
+.konami-prompt {
+  color: #35A89C;
+}
+
+.konami-error {
+  color: #FF9F1C;
+}
+
+.konami-row {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 12px 12px;
+}
+
+.konami-prompt {
+  flex: none;
+}
+
+.konami-input,
+.konami-input:focus {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  caret-color: #FF9F1C;
+  font: inherit;
+}
+
+@keyframes konami-open {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .konami-terminal {
+    animation: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .konami-terminal {
+    font-size: 11px;
+  }
+}
