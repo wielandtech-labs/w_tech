@@ -615,8 +615,8 @@ def get_weather_history(request):
     # merge into one line (query_range results keep only result[0]).
     temp_query = f'max by (entity) ({WEATHER_TEMP_SERIES})'
     wind_query = f'max by (entity) ({WEATHER_WIND_SPEED_SERIES})'
-    humidity_query = 'homeassistant_sensor_humidity_percent{entity=~"sensor.norton_shores.*humidity.*"}'
-    pressure_query = 'homeassistant_sensor_pressure_hpa{entity=~"sensor.norton_shores.*pressure.*"}'
+    humidity_query = f'max by (entity) ({WEATHER_HUMIDITY_SERIES})'
+    pressure_query = f'max by (entity) ({WEATHER_PRESSURE_SERIES})'
     
     try:
         if period == '24h':
