@@ -23,6 +23,8 @@ permissions:
 
 jobs:
   build:
+    # Fork PRs never run on the self-hosted runners: they sit inside the cluster.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: homelab-dind
     
     steps:
@@ -72,8 +74,6 @@ jobs:
           PR_TAG="ghcr.io/wielandtech-labs/w_tech:pr-${{ github.event.pull_request.number }}-${SHA}"
           echo "pr_tag=pr-${{ github.event.pull_request.number }}-${SHA}" >> $GITHUB_OUTPUT
           echo "Created review app tag: ${PR_TAG}"
-        elif [ "${{ github.event_name }}" == "pull_request" ]; then
-          echo "Skipping registry promotion tag for fork pull request"
         else
           echo "Skipping registry promotion tag (not a push event)"
         fi
