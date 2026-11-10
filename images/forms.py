@@ -2,7 +2,7 @@ from django import forms
 from django.core.files.base import ContentFile
 from django.utils.text import slugify
 from django.conf import settings
-from .fetch import ImageFetchError, check_public_url, fetch_image
+from .fetch import fetch_image
 from .models import Image
 
 
@@ -21,10 +21,6 @@ class ImageCreateForm(forms.ModelForm):
         extension = url.rsplit('.', 1)[1].lower()
         if extension not in valid_extensions:
             raise forms.ValidationError('The given URL does not match valid image extensions.')
-        try:
-            check_public_url(url)
-        except ImageFetchError as e:
-            raise forms.ValidationError(str(e))
         return url
 
     def save(self, force_insert=False,
@@ -32,12 +28,9 @@ class ImageCreateForm(forms.ModelForm):
              commit=True):
         image = super().save(commit=False)
 
-        image_url = self.cleaned_data['url']
-        name = slugify(image.title)
-        extension = image_url.rsplit('.', 1)[1].lower()
-        image_name = f'{name}.{extension}'
         # download image from the given URL (raises ImageFetchError)
-        image.image.save(image_name, ContentFile(fetch_image(image_url)), save=False)
+        data, extension = fetch_image(self.cleaned_data['url'])
+        image.image.save(f'{slugify(image.title)}.{extension}', ContentFile(data), save=False)
         if commit:
             image.save()
         return image
@@ -83,21 +76,14 @@ class ImageUploadForm(forms.ModelForm):
             extension = url.rsplit('.', 1)[1].lower()
             if extension not in valid_extensions:
                 raise forms.ValidationError('The given URL does not match valid image extensions.')
-            try:
-                check_public_url(url)
-            except ImageFetchError as e:
-                raise forms.ValidationError(str(e))
         return url
 
     def save(self, force_insert=False, force_update=False, commit=True):
         image = super().save(commit=False)
 
         if self.cleaned_data.get('url'):
-            image_url = self.cleaned_data['url']
-            name = slugify(image.title)
-            extension = image_url.rsplit('.', 1)[1].lower()
-            image_name = f'{name}.{extension}'
-            image.image.save(image_name, ContentFile(fetch_image(image_url)), save=False)
+            data, extension = fetch_image(self.cleaned_data['url'])  # raises ImageFetchError
+            image.image.save(f'{slugify(image.title)}.{extension}', ContentFile(data), save=False)
 
         if commit:
             image.save()

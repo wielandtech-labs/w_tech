@@ -1,15 +1,19 @@
 import socket
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 
-from PIL import Image as PILImage
-from django.test import TestCase, Client, override_settings
+from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from unittest.mock import patch, MagicMock
 from .models import Image
-from .fetch import ImageFetchError, fetch_image
 from .forms import ImageCreateForm, ImageUploadForm
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from PIL import Image as PILImage
+from . import fetch
+from .fetch import ImageFetchError, fetch_image
 
 User = get_user_model()
 
@@ -28,56 +32,10 @@ class ImageModelTests(TestCase):
         self.assertIn(img.slug, img.get_absolute_url())
 
 
-def resolves_to(*addresses):
-    """Patch DNS so every host resolves to the given addresses."""
-    infos = [(socket.AF_INET6 if ':' in a else socket.AF_INET, socket.SOCK_STREAM, 6, '', (a, 80))
-             for a in addresses]
-    return patch('images.fetch.socket.getaddrinfo', return_value=infos)
-
-
-def png_bytes():
-    buf = BytesIO()
-    PILImage.new('RGB', (2, 2), 'red').save(buf, format='PNG')
-    return buf.getvalue()
-
-
-def fake_response(status=200, body=b'', location=None):
-    response = MagicMock()
-    response.status_code = status
-    response.is_redirect = location is not None
-    response.headers = {'Location': location} if location else {}
-    response.iter_content.return_value = [body]
-    response.__enter__.return_value = response
-    return response
-
-
 class ImageFormTests(TestCase):
     def test_image_create_form_valid(self):
-        with resolves_to('93.184.215.14'):
-            form = ImageCreateForm(data={'title': 'Test', 'url': 'http://example.com/image.jpg', 'description': 'desc'})
-            self.assertTrue(form.is_valid())
-
-    def test_image_create_form_rejects_internal_addresses(self):
-        for address in ('127.0.0.1', '10.43.0.10', '192.168.70.240', '169.254.169.254', '::1', 'fd00::1'):
-            with self.subTest(address=address), resolves_to(address):
-                form = ImageCreateForm(data={'title': 'T', 'url': 'http://internal.example/x.png', 'description': ''})
-                self.assertFalse(form.is_valid())
-                self.assertIn('private address', str(form.errors['url']))
-
-    def test_image_create_form_rejects_mixed_public_and_private_dns(self):
-        with resolves_to('93.184.215.14', '10.0.0.5'):
-            form = ImageCreateForm(data={'title': 'T', 'url': 'http://example.com/x.png', 'description': ''})
-            self.assertFalse(form.is_valid())
-
-    def test_image_upload_form_rejects_internal_url(self):
-        with resolves_to('10.42.0.7'):
-            form = ImageUploadForm(data={'title': 'T', 'url': 'http://svc.cluster.local/x.jpg', 'description': ''})
-            self.assertFalse(form.is_valid())
-            self.assertIn('url', form.errors)
-
-    def test_image_upload_form_rejects_ftp(self):
-        form = ImageUploadForm(data={'title': 'T', 'url': 'ftp://example.com/x.jpg', 'description': ''})
-        self.assertFalse(form.is_valid())
+        form = ImageCreateForm(data={'title': 'Test', 'url': 'http://example.com/image.jpg', 'description': 'desc'})
+        self.assertTrue(form.is_valid())
 
     def test_image_create_form_invalid_extension(self):
         form = ImageCreateForm(data={'title': 'Test', 'url': 'http://example.com/image.txt', 'description': 'desc'})
@@ -192,59 +150,163 @@ class PublicImageListTests(TestCase):
         self.assertFalse(self.staff_image.users_like.exists())
 
 
+def addrinfo(*addresses):
+    return [(socket.AF_INET6 if ':' in a else socket.AF_INET, socket.SOCK_STREAM, 6, '', (a, 80))
+            for a in addresses]
+
+
+def png_bytes():
+    buf = BytesIO()
+    PILImage.new('RGB', (2, 2), 'red').save(buf, format='PNG')
+    return buf.getvalue()
+
+
+class _Handler(BaseHTTPRequestHandler):
+    routes = {}
+
+    def do_GET(self):
+        status, headers, body = self.routes.get(self.path, (404, {}, b''))
+        self.send_response(status)
+        for k, v in headers.items():
+            self.send_header(k, v)
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
 class FetchImageTests(TestCase):
-    def test_returns_png_bytes(self):
-        data = png_bytes()
-        with resolves_to('93.184.215.14'), \
-                patch('images.fetch.requests.get', return_value=fake_response(body=data)) as get:
-            self.assertEqual(fetch_image('https://example.com/a.png'), data)
-        self.assertFalse(get.call_args.kwargs['allow_redirects'])
-        self.assertIsNotNone(get.call_args.kwargs['timeout'])
+    """Real HTTP against a local server; "img.test" is pinned to 127.0.0.1."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.server = ThreadingHTTPServer(('127.0.0.1', 0), _Handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        _Handler.routes = {
+            '/a.png': (200, {}, png_bytes()),
+            '/page.png': (200, {}, b'<html>secret</html>'),
+            '/big.png': (200, {}, b'x' * 64),
+            '/to-internal.png': (302, {'Location': 'http://internal.test/x.png'}, b''),
+            '/loop.png': (302, {'Location': '/loop.png'}, b''),
+        }
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        super().tearDownClass()
+
+    def url(self, path):
+        return f'http://img.test:{self.port}{path}'
+
+    def setUp(self):
+        real = fetch.public_addresses
+
+        def resolve(host, port):
+            if host == 'img.test':
+                return ['127.0.0.1']
+            with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('10.43.0.1')):
+                return real(host, port)
+        patcher = patch('images.fetch.public_addresses', side_effect=resolve)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_returns_png_and_real_extension(self):
+        data, ext = fetch_image(self.url('/a.png'))
+        self.assertEqual(data, png_bytes())
+        self.assertEqual(ext, 'png')
 
     def test_redirect_to_internal_host_is_refused(self):
-        responses = [fake_response(status=302, location='http://10.43.0.1/secret.png')]
-        with patch('images.fetch.requests.get', side_effect=responses), \
-                patch('images.fetch.socket.getaddrinfo', side_effect=[
-                    resolves_to('93.184.215.14').kwargs['return_value'],
-                    resolves_to('10.43.0.1').kwargs['return_value'],
-                ]):
-            with self.assertRaisesMessage(ImageFetchError, 'private address'):
-                fetch_image('https://example.com/a.png')
+        with self.assertRaisesMessage(ImageFetchError, 'private address'):
+            fetch_image(self.url('/to-internal.png'))
 
     def test_too_many_redirects(self):
-        loop = [fake_response(status=302, location='https://example.com/a.png') for _ in range(5)]
-        with resolves_to('93.184.215.14'), patch('images.fetch.requests.get', side_effect=loop):
-            with self.assertRaisesMessage(ImageFetchError, 'too many times'):
-                fetch_image('https://example.com/a.png')
+        with self.assertRaisesMessage(ImageFetchError, 'too many times'):
+            fetch_image(self.url('/loop.png'))
 
     @override_settings(MAX_UPLOAD_SIZE=10)
     def test_oversize_body_is_refused(self):
-        with resolves_to('93.184.215.14'), \
-                patch('images.fetch.requests.get', return_value=fake_response(body=b'x' * 11)):
-            with self.assertRaisesMessage(ImageFetchError, 'larger than'):
-                fetch_image('https://example.com/a.png')
+        with self.assertRaisesMessage(ImageFetchError, 'larger than'):
+            fetch_image(self.url('/big.png'))
 
     def test_non_image_body_is_refused(self):
-        with resolves_to('93.184.215.14'), \
-                patch('images.fetch.requests.get', return_value=fake_response(body=b'<html>secret</html>')):
-            with self.assertRaisesMessage(ImageFetchError, 'valid image'):
-                fetch_image('https://example.com/a.png')
+        with self.assertRaisesMessage(ImageFetchError, 'valid image'):
+            fetch_image(self.url('/page.png'))
 
     def test_non_200_is_refused(self):
-        with resolves_to('93.184.215.14'), \
-                patch('images.fetch.requests.get', return_value=fake_response(status=404)):
+        with self.assertRaises(ImageFetchError):
+            fetch_image(self.url('/missing.png'))
+
+    def test_ftp_is_refused(self):
+        with self.assertRaisesMessage(ImageFetchError, 'Only http and https'):
+            fetch_image('ftp://img.test/a.png')
+
+    def test_bad_port_is_a_fetch_error(self):
+        with self.assertRaises(ImageFetchError):
+            fetch_image('http://img.test:99999/a.png')
+
+    def test_proxy_env_is_ignored(self):
+        proxy = 'http://10.43.0.9:3128'
+        with patch.dict('os.environ', {'HTTP_PROXY': proxy, 'http_proxy': proxy}):
+            data, _ = fetch_image(self.url('/a.png'))
+        self.assertEqual(data, png_bytes())
+
+
+class PublicAddressTests(TestCase):
+    def test_internal_addresses_are_refused(self):
+        for address in ('127.0.0.1', '10.43.0.10', '192.168.70.240', '169.254.169.254', '::1', 'fd00::1',
+                        '::ffff:10.0.0.1'):
+            with self.subTest(address=address), \
+                    patch('images.fetch.socket.getaddrinfo', return_value=addrinfo(address)):
+                with self.assertRaisesMessage(ImageFetchError, 'private address'):
+                    fetch.public_addresses('internal.example', 80)
+
+    def test_one_private_answer_is_enough_to_refuse(self):
+        with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('93.184.215.14', '10.0.0.5')):
             with self.assertRaises(ImageFetchError):
-                fetch_image('https://example.com/a.png')
+                fetch.public_addresses('example.com', 80)
+
+    def test_public_address_is_allowed(self):
+        with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('93.184.215.14')):
+            self.assertEqual(fetch.public_addresses('example.com', 80), ['93.184.215.14'])
+
+    def test_connection_to_private_dns_answer_never_opens(self):
+        """The pinned connection refuses before any socket is opened."""
+        with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('10.43.0.10')), \
+                patch('images.fetch.create_connection') as connect:
+            with self.assertRaisesMessage(ImageFetchError, 'private address'):
+                fetch_image('http://rebind.example/a.png')
+        connect.assert_not_called()
 
 
-class ImageCreateFetchErrorViewTests(TestCase):
-    def test_fetch_error_shows_form_error_not_500(self):
-        user = User.objects.create_user(username='u', password='p')
-        self.client.force_login(user)
-        with resolves_to('93.184.215.14'), \
-                patch('images.fetch.requests.get', return_value=fake_response(body=b'not an image')):
+class ImageFetchErrorViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='u', password='p')
+        self.client.force_login(self.user)
+
+    def test_create_with_internal_url_shows_form_error(self):
+        with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('10.43.0.10')):
             response = self.client.post(reverse('images:create'),
-                                        {'title': 'T', 'url': 'https://example.com/a.png', 'description': ''})
+                                        {'title': 'T', 'url': 'http://svc.example/a.png', 'description': ''})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'valid image')
+        self.assertContains(response, 'private address')
         self.assertFalse(Image.objects.filter(title='T').exists())
+
+    def test_upload_with_internal_url_shows_form_error(self):
+        with patch('images.fetch.socket.getaddrinfo', return_value=addrinfo('10.43.0.10')):
+            response = self.client.post(reverse('images:upload'),
+                                        {'title': 'U', 'url': 'http://svc.example/a.png', 'description': ''})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'private address')
+        self.assertFalse(Image.objects.filter(title='U').exists())
+
+    def test_bookmarklet_get_does_no_dns_lookup(self):
+        with patch('images.fetch.socket.getaddrinfo') as resolve:
+            response = self.client.get(reverse('images:create'),
+                                       {'title': 'T', 'url': 'http://anything.example/a.png'})
+        self.assertEqual(response.status_code, 200)
+        resolve.assert_not_called()
