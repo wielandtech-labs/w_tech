@@ -1,8 +1,8 @@
-from urllib import request
 from django import forms
 from django.core.files.base import ContentFile
 from django.utils.text import slugify
 from django.conf import settings
+from .fetch import ImageFetchError, check_public_url, fetch_image
 from .models import Image
 
 
@@ -21,6 +21,10 @@ class ImageCreateForm(forms.ModelForm):
         extension = url.rsplit('.', 1)[1].lower()
         if extension not in valid_extensions:
             raise forms.ValidationError('The given URL does not match valid image extensions.')
+        try:
+            check_public_url(url)
+        except ImageFetchError as e:
+            raise forms.ValidationError(str(e))
         return url
 
     def save(self, force_insert=False,
@@ -32,9 +36,8 @@ class ImageCreateForm(forms.ModelForm):
         name = slugify(image.title)
         extension = image_url.rsplit('.', 1)[1].lower()
         image_name = f'{name}.{extension}'
-        # download image from the given URL
-        response = request.urlopen(image_url)
-        image.image.save(image_name, ContentFile(response.read()), save=False)
+        # download image from the given URL (raises ImageFetchError)
+        image.image.save(image_name, ContentFile(fetch_image(image_url)), save=False)
         if commit:
             image.save()
         return image
@@ -80,6 +83,10 @@ class ImageUploadForm(forms.ModelForm):
             extension = url.rsplit('.', 1)[1].lower()
             if extension not in valid_extensions:
                 raise forms.ValidationError('The given URL does not match valid image extensions.')
+            try:
+                check_public_url(url)
+            except ImageFetchError as e:
+                raise forms.ValidationError(str(e))
         return url
 
     def save(self, force_insert=False, force_update=False, commit=True):
@@ -90,8 +97,7 @@ class ImageUploadForm(forms.ModelForm):
             name = slugify(image.title)
             extension = image_url.rsplit('.', 1)[1].lower()
             image_name = f'{name}.{extension}'
-            response = request.urlopen(image_url)
-            image.image.save(image_name, ContentFile(response.read()), save=False)
+            image.image.save(image_name, ContentFile(fetch_image(image_url)), save=False)
 
         if commit:
             image.save()
