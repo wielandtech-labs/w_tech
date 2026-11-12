@@ -21,6 +21,8 @@ permissions:
   contents: read
   packages: write
   # Keyless signing: the OIDC token is what Fulcio turns into a signing cert.
+  # Every step in the job can request it, which is why all actions below are
+  # pinned to commit SHAs.
   id-token: write
   # Lets actions/attest-build-provenance store the provenance attestation.
   attestations: write
@@ -30,15 +32,17 @@ jobs:
     # Fork PRs never run on the self-hosted runners: they sit inside the cluster.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: homelab-dind
-    
+    env:
+      IMAGE: ghcr.io/wielandtech-labs/w_tech
+
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
         ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     
     - name: Set up Docker Buildx (remote buildkitd)
-      uses: docker/setup-buildx-action@v4
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       with:
         driver: remote
         endpoint: tcp://buildkitd.buildkit.svc.cluster.local:1234
@@ -48,7 +52,7 @@ jobs:
           key=/etc/buildkit/certs/tls.key
     
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v4
+      uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -84,7 +88,7 @@ jobs:
     
     - name: Extract metadata
       id: meta
-      uses: docker/metadata-action@v6
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ghcr.io/wielandtech-labs/w_tech
         tags: |
@@ -99,37 +103,38 @@ jobs:
     # Gate the image on the test suite. Runs in the remote buildkitd (the
     # runner has no Docker daemon); a failing test fails this `build` job.
     - name: Run Django tests
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
       with:
         context: .
         target: test
         push: false
         outputs: type=cacheonly
 
+    # Pushed by digest only, with no tags yet: Flux and the review apps deploy
+    # by tag, so the tags are added further down, after signing has succeeded.
     - name: Build and push Docker image
-      uses: docker/build-push-action@v7
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
       id: build
       with:
         context: .
-        push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        tags: ${{ steps.meta.outputs.tags }}
+        tags: ${{ env.IMAGE }}
+        outputs: type=image,push-by-digest=true,name-canonical=true,push=true
         labels: ${{ steps.meta.outputs.labels }}
         # Remote buildkitd handles its own layer + cache-mount persistence via
         # the PVC. No gha cache needed.
         cache-to: type=inline
 
     # --- Supply chain (w_homelab#1571): sign, SBOM, provenance ---
-    # Everything below addresses the pushed image by digest, never by tag, so
-    # it covers all tags of this build (pr-*, dev-*, prod). The steps are
-    # fail-closed: a signing failure fails `build` instead of leaving an
-    # unsigned image behind a green check. Fork PRs never get here (job-level
-    # `if`), so the missing OIDC token there is not a problem.
+    # Everything addresses the image by digest, so it covers all tags of this
+    # build (pr-*, dev-*, prod). Fail-closed: if any of these steps fails, the
+    # image never gets its deploy tags, `build` goes red and nothing deploys.
+    # Fork PRs never get here (job-level `if`), so the missing OIDC token
+    # there is not a problem.
     - name: Install cosign
       uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
     - name: Sign image (cosign keyless)
       env:
-        IMAGE: ghcr.io/wielandtech-labs/w_tech
         DIGEST: ${{ steps.build.outputs.digest }}
       shell: bash
       run: |
@@ -148,7 +153,6 @@ jobs:
     # (credentials come from the docker login above).
     - name: Generate SBOM and attest it (syft + cosign)
       env:
-        IMAGE: ghcr.io/wielandtech-labs/w_tech
         DIGEST: ${{ steps.build.outputs.digest }}
         SYFT: ${{ steps.syft.outputs.cmd }}
       shell: bash
@@ -161,11 +165,36 @@ jobs:
     - name: Attest build provenance
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
       with:
-        subject-name: ghcr.io/wielandtech-labs/w_tech
+        subject-name: ${{ env.IMAGE }}
         subject-digest: ${{ steps.build.outputs.digest }}
         push-to-registry: true
         # Storage records need the extra `artifact-metadata: write` permission.
         create-storage-record: false
+
+    # Only now does the image become deployable. The tags must point at the
+    # digest that was signed, so check that after tagging.
+    - name: Tag the signed image
+      env:
+        DIGEST: ${{ steps.build.outputs.digest }}
+        TAGS: ${{ steps.meta.outputs.tags }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=()
+        while IFS= read -r tag; do
+          [ -n "$tag" ] && args+=(-t "$tag")
+        done <<< "$TAGS"
+        if [ "${#args[@]}" -eq 0 ]; then
+          echo "::error::metadata step produced no tags"
+          exit 1
+        fi
+        docker buildx imagetools create "${args[@]}" "${IMAGE}@${DIGEST}"
+        first_tag="${args[1]}"
+        tagged=$(docker buildx imagetools inspect "$first_tag" --format '{{json .Manifest}}' | jq -r .digest)
+        if [ "$tagged" != "$DIGEST" ]; then
+          echo "::error::${first_tag} points at ${tagged}, not the signed digest ${DIGEST}"
+          exit 1
+        fi
 
     - name: Dispatch review app update
       if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
