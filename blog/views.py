@@ -8,6 +8,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 from django.views.generic import ListView
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
 from django.http import JsonResponse
 from taggit.models import Tag
 
@@ -59,6 +60,8 @@ def post_detail(request, year, month, day, post):
     comments = post.comments.filter(active=True)
 
     if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
         comment_form = CommentForm(data=request.POST)
         if comment_form.is_valid():
             new_comment = comment_form.save(commit=False)

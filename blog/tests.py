@@ -95,6 +95,22 @@ class BlogViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTemplateUsed(resp, 'blog/post/search.html')
 
+    def test_anonymous_comment_post_redirects_to_login(self):
+        url = self.post.get_absolute_url()
+        resp = self.client.post(url, {'body': 'Hello'})
+        self.assertRedirects(resp, f"{reverse('login')}?next={url}",
+                             fetch_redirect_response=False)
+        self.assertFalse(Comment.objects.exists())
+
+    def test_authenticated_comment_post_saves(self):
+        url = self.post.get_absolute_url()
+        self.client.login(username='john', password='12345')
+        resp = self.client.post(url, {'body': 'Hello'})
+        self.assertRedirects(resp, url, fetch_redirect_response=False)
+        comment = Comment.objects.get()
+        self.assertEqual(comment.user, self.user)
+        self.assertEqual(comment.body, 'Hello')
+
     def test_post_share_view_get(self):
         url = reverse('blog:post_share', args=[self.post.id])
         self.client.login(username='john', password='12345')

@@ -35,6 +35,7 @@ FROM builder AS test
 WORKDIR /wielandtech
 COPY . .
 RUN DATABASE_ENGINE=sqlite \
+    DJANGO_SECRET_KEY=build-only-not-a-secret \
     RECAPTCHA_PUBLIC_KEY=dummy \
     RECAPTCHA_PRIVATE_KEY=dummy \
     python manage.py test --noinput -v 2
@@ -66,6 +67,7 @@ COPY . .
 # would silently auto-generate (and apply) unreviewed migrations in-cluster.
 # --check needs no database; the sqlite/dummy env just lets settings import.
 RUN DATABASE_ENGINE=sqlite \
+    DJANGO_SECRET_KEY=build-only-not-a-secret \
     RECAPTCHA_PUBLIC_KEY=dummy \
     RECAPTCHA_PRIVATE_KEY=dummy \
     python manage.py makemigrations --check --dry-run

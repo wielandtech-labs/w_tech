@@ -1,9 +1,14 @@
 """
-Tests for custom middleware.
+Tests for custom middleware and security settings.
 """
+import os
+import subprocess
+import sys
+
 from django.conf import settings
 from django.http import HttpResponse
-from django.test import RequestFactory, SimpleTestCase
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from wielandtech.middleware import (
     InternalAdminCookieMiddleware,
@@ -105,3 +110,54 @@ class WwwRedirectMiddlewareTests(SimpleTestCase):
         from django.core.exceptions import DisallowedHost
         with self.assertRaises(DisallowedHost):
             self._run('www.evil.example')
+
+
+class SecretKeySettingTests(SimpleTestCase):
+    def _import_settings(self, **env):
+        # A fresh interpreter, since settings are evaluated once per process.
+        # An empty DJANGO_SECRET_KEY counts as unset, and load_dotenv() never
+        # overrides a variable that is already present, so a local .env can't
+        # leak in.
+        return subprocess.run(
+            [sys.executable, '-c', 'import wielandtech.settings'],
+            cwd=settings.BASE_DIR,
+            env={**os.environ, 'DJANGO_SECRET_KEY': '', **env},
+            capture_output=True,
+            text=True,
+        )
+
+    def test_startup_fails_without_secret_key_when_debug_off(self):
+        result = self._import_settings(DEBUG='False')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('DJANGO_SECRET_KEY must be set', result.stderr)
+
+    def test_debug_allows_missing_secret_key(self):
+        result = self._import_settings(DEBUG='True')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class CsrfTrustedOriginsTests(TestCase):
+    def test_trusted_origins_are_https_only(self):
+        for origin in settings.CSRF_TRUSTED_ORIGINS:
+            self.assertTrue(origin.startswith('https://'), origin)
+
+    def test_same_origin_http_post_on_lan_host_passes_csrf(self):
+        # Plain-http admin login on wielandtech.k8s.local needs no trusted
+        # origin: Django accepts an Origin that matches the request's own.
+        client = Client(enforce_csrf_checks=True)
+        host = 'wielandtech.k8s.local'
+        client.get(reverse('login'), HTTP_HOST=host)
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        resp = client.post(reverse('login'), {'csrfmiddlewaretoken': token},
+                           HTTP_HOST=host, HTTP_ORIGIN=f'http://{host}')
+        # 200: CSRF passed and the login form re-renders with its errors.
+        self.assertEqual(resp.status_code, 200)
+
+    def test_cross_origin_http_post_is_rejected(self):
+        client = Client(enforce_csrf_checks=True)
+        client.get(reverse('login'), HTTP_HOST='raphaelwieland.com')
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
+        resp = client.post(reverse('login'), {'csrfmiddlewaretoken': token},
+                           HTTP_HOST='raphaelwieland.com',
+                           HTTP_ORIGIN='http://dev.wielandtech.com')
+        self.assertEqual(resp.status_code, 403)
