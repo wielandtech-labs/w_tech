@@ -42,6 +42,17 @@ Rollback = revert the environment's HelmRelease image tag in w_homelab via PR
 - Builds run on the shared org runner pool (`runs-on: homelab-dind`) with
   buildx `driver: remote` against the in-cluster buildkitd — there is no
   local Docker daemon, so `docker run` and service containers do NOT work.
+- Images are signed before they are tagged: the build pushes by digest,
+  then cosign signs it (keyless, GitHub OIDC), attaches a syft SPDX SBOM and
+  SLSA provenance, and only then adds the deploy tags. A signing failure
+  therefore means a red `build` and no deploy, never an unsigned deploy.
+  Verify with `cosign verify ghcr.io/wielandtech-labs/w_tech:<tag>
+  --certificate-identity-regexp
+  '^https://github.com/wielandtech-labs/w_tech/\.github/workflows/docker-build\.yml@refs/heads/main$'
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com`
+  (prod; dev and PR images carry their own ref in the identity). Actions in
+  that workflow are pinned to commit SHAs because the job holds
+  `id-token: write`; bump the SHA and the version comment together.
 - The review-app dispatch still sends the legacy `w-tech-review-app` event;
   the homelab workflow supports it (defaults to `app=website`). The generic
   successor is `event_type: review-app` with `app` in the payload — migrate
